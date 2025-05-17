@@ -5,9 +5,13 @@ const activeConnections = new Map() // key: user ID, value: socket
 
 const ChatCtl = {
 
-	async chat_socket(socket, req)
+	async chat_socket(socket, request)
 	{
-		const userId = req.query.userId
+		const authHeader = request.headers.authorization
+        const token = authHeader.split(' ')[1]
+        const decoded = await request.jwtVerify(token)
+        const payload = decoded.payload
+		const userId = payload.id
 
 		if (!userId)
 		{
