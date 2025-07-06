@@ -83,6 +83,20 @@ const FriendshipCtrl = {
             ),
         );
     },
+    async blockUser(request, reply) {
+        const blocker_id = request.user.payload.id;
+        const { blocked_id } = request.body;
+        reply.send(
+            await FriendshipModel.block_user(this.db, blocker_id, blocked_id),
+        );
+    },
+    async unblockUser(request, reply) {
+        const blocker_id = request.user.payload.id;
+        const { blocked_id } = request.body;
+        reply.send(
+            await FriendshipModel.unblock_user(this.db, blocker_id, blocked_id),
+        );
+    },
 };
 
 module.exports = FriendshipCtrl;

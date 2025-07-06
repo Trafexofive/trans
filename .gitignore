@@ -12,6 +12,7 @@ devops/external-volumes/*
 # docs/
 app/backend/database.db
 app/frontend/node_modules/
+app/frontend/.next
 app/backend/node_modules/
 
 # Diagnostic reports (https://nodejs.org/api/report.html)

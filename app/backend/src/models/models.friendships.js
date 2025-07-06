@@ -1,8 +1,11 @@
+
 const FriendshipModel = {
     friendships_init: () =>
         `CREATE TABLE IF NOT EXISTS friendships (user_id INTEGER NOT NULL, friend_id INTEGER NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (user_id, friend_id), FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE, FOREIGN KEY (friend_id) REFERENCES users(id) ON DELETE CASCADE);`,
     friend_requests_init: () =>
         `CREATE TABLE IF NOT EXISTS friend_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, sender_id INTEGER NOT NULL, receiver_id INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'pending', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE, FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE, UNIQUE (sender_id, receiver_id));`,
+    blocked_users_init: () =>
+        `CREATE TABLE IF NOT EXISTS blocked_users (blocker_id INTEGER NOT NULL, blocked_id INTEGER NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (blocker_id, blocked_id), FOREIGN KEY (blocker_id) REFERENCES users(id) ON DELETE CASCADE, FOREIGN KEY (blocked_id) REFERENCES users(id) ON DELETE CASCADE);`,
 
     async create_friend_request(db, sender_id, receiver_id) {
         try {
@@ -165,6 +168,49 @@ const FriendshipModel = {
             return { success: true, code: 200, result: { sent, received } };
         } catch (err) {
             return { success: false, code: 500, result: err.message };
+        }
+    },
+
+    async block_user(db, blocker_id, blocked_id) {
+        try {
+            const stmt = db.prepare(
+                `INSERT OR IGNORE INTO blocked_users (blocker_id, blocked_id) VALUES (?, ?)`,
+            );
+            await stmt.run(blocker_id, blocked_id);
+            return { success: true, code: 201, result: "User blocked." };
+        } catch (err) {
+            return { success: false, code: 500, result: err.message };
+        }
+    },
+
+    async unblock_user(db, blocker_id, blocked_id) {
+        try {
+            const stmt = db.prepare(
+                `DELETE FROM blocked_users WHERE blocker_id = ? AND blocked_id = ?`,
+            );
+            const info = await stmt.run(blocker_id, blocked_id);
+            if (info.changes === 0) {
+                return {
+                    success: false,
+                    code: 404,
+                    result: "Block relationship not found.",
+                };
+            }
+            return { success: true, code: 200, result: "User unblocked." };
+        } catch (err) {
+            return { success: false, code: 500, result: err.message };
+        }
+    },
+
+    async check_block(db, user1_id, user2_id) {
+        try {
+            const stmt = db.prepare(
+                `SELECT 1 FROM blocked_users WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?) LIMIT 1`,
+            );
+            const res = await stmt.get(user1_id, user2_id, user2_id, user1_id);
+            return { success: true, result: !!res };
+        } catch (err) {
+            return { success: false, result: false };
         }
     },
 };
