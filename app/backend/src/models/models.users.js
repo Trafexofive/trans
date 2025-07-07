@@ -8,13 +8,10 @@
 // avatar -> varchar 300
 // created_at -> TIMESTAMP
 
-const bcrypt = require('bcrypt')
-
+const bcrypt = require("bcrypt");
 
 const UserModel = {
-
-    users_init()
-    {
+    users_init() {
         return `CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name VARCHAR(100) NOT NULL UNIQUE,
@@ -24,199 +21,184 @@ const UserModel = {
             loses INTEGER DEFAULT 0,
             avatar VARCHAR(300),
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        );`
+        );`;
     },
 
-    users_index_email()
-    {
-        return `CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);`
+    users_index_email() {
+        return `CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);`;
     },
 
-    users_index_name()
-    {
-        return `CREATE INDEX IF NOT EXISTS idx_users_name ON users (name);`
+    users_index_name() {
+        return `CREATE INDEX IF NOT EXISTS idx_users_name ON users (name);`;
     },
 
-    async user_fetch_by_email(db, email)  // never link this to a route
+    async user_fetch_by_email(db, email) // never link this to a route
     {
-        try
-        {
+        try {
             const stmt = db.prepare(`
                 SELECT *
                 FROM users
                 WHERE email = ?
-            `)
-            const result = await stmt.get(email)
-            if (result === undefined)
-            {
+            `);
+            const result = await stmt.get(email);
+            if (result === undefined) {
                 return {
                     success: false,
                     code: 404,
-                    result: "user not found"
-                }
+                    result: "user not found",
+                };
             }
 
             return {
                 success: true,
                 code: 200,
-                result: result
-            }
-
-        }
-        catch (err)
-        {
+                result: result,
+            };
+        } catch (err) {
             return {
                 success: false,
                 code: 500,
-                result: err.message
-            }
+                result: err.message,
+            };
         }
     },
 
-
-    async user_fetch(db, userId)
-    {
-        try
-        {
+    async user_fetch(db, userId) {
+        try {
             const stmt = db.prepare(`
                 SELECT *
                 FROM users
                 WHERE id = ?
-            `)
-            const result = await stmt.get(userId)
-            if (result === undefined)
-            {
+            `);
+            const result = await stmt.get(userId);
+            if (result === undefined) {
                 return {
                     success: false,
                     code: 404,
-                    result: "user not found"
-                }
+                    result: "user not found",
+                };
             }
 
             const { password, ...user_no_password } = result;
             return {
                 success: true,
                 code: 200,
-                result: user_no_password
-            }
-
-        }
-        catch (err)
-        {
+                result: user_no_password,
+            };
+        } catch (err) {
             return {
                 success: false,
                 code: 500,
-                result: err.message
-            }
+                result: err.message,
+            };
         }
     },
 
-    async user_all(db)
-    {
-        try
-        {
+    async user_all(db) {
+        try {
             const stmt = db.prepare(`
                 SELECT id, name, email, wins, loses, avatar, created_at
                 FROM users
-            `)
-            const result = await stmt.all()
+            `);
+            const result = await stmt.all();
             return {
                 success: true,
                 code: 200,
-                result: result
-            }
-        }
-        catch (err)
-        {
+                result: result,
+            };
+        } catch (err) {
             return {
                 success: false,
                 code: 500,
-                result: err.message
-            }
+                result: err.message,
+            };
         }
     },
-    async user_create(db, name, email, password, avatar = '/avatars/default.png')
-    {
-        try
-        {
-            const hashedPassword = await bcrypt.hash(password, 10)
+    async user_create(
+        db,
+        name,
+        email,
+        password,
+        avatar = "/avatars/default.png",
+    ) {
+        try {
+            const hashedPassword = await bcrypt.hash(password, 10);
             const stmt = db.prepare(`
                 INSERT
                 INTO users (name, email, password, avatar)
                 VALUES (?, ?, ?, ?)
-            `)
-            const result = await stmt.run(name, email, hashedPassword, avatar)
-            if (result.changes === 0)
-            {
+            `);
+            const result = await stmt.run(name, email, hashedPassword, avatar);
+            if (result.changes === 0) {
                 return {
                     success: false,
                     code: 400,
-                    result: "user creation failed"
-                }
+                    result: "user creation failed",
+                };
             }
             return {
                 success: true,
                 code: 200,
-                result: result.changes
-            }
-        }
-        catch (err)
-        {
-            if (err.code === 'SQLITE_CONSTRAINT_UNIQUE')
-            {
+                result: result.changes,
+            };
+        } catch (err) {
+            if (err.code === "SQLITE_CONSTRAINT_UNIQUE") {
                 return {
                     success: false,
                     code: 409,
-                    result: "A user with that name or email already exists." // More descriptive error
-                  }
+                    result: "A user with that name or email already exists.", // More descriptive error
+                };
             }
             return {
                 success: false,
                 code: 500,
-                result: err.message
-            }
-        } 
+                result: err.message,
+            };
+        }
     },
 
-    async user_update(db, user_id, name, email, password, avatar)
-    {
-        try
-        {
-            const hashedPassword = await bcrypt.hash(password, 10)
+    async user_update(db, user_id, name, email, password, avatar) {
+        try {
+            const hashedPassword = await bcrypt.hash(password, 10);
             const stmt = db.prepare(`
                 UPDATE users
                 SET name = ?, email = ?, password = ?, avatar = ?
                 WHERE id = ?
             `);
-            const result = await stmt.run(name, email, hashedPassword, avatar, user_id);
-            if (result.changes === 0)
-            {
+            const result = await stmt.run(
+                name,
+                email,
+                hashedPassword,
+                avatar,
+                user_id,
+            );
+            if (result.changes === 0) {
                 return {
                     success: false,
                     code: 400,
-                    result: "user update failed"
-                }
+                    result: "user update failed",
+                };
             }
 
             return {
                 success: true,
                 code: 200,
-                result: result.changes
-            }
-        }
-        catch (err)
-        {
+                result: result.changes,
+            };
+        } catch (err) {
             return {
                 success: false,
                 code: 500,
-                result: err.message
-            }
+                result: err.message,
+            };
         }
     },
 
     async user_add_win(db, user_id) {
         try {
-            const stmt = db.prepare(`UPDATE users SET wins = wins + 1 WHERE id = ?`);
+            const stmt = db.prepare(
+                `UPDATE users SET wins = wins + 1 WHERE id = ?`,
+            );
             await stmt.run(user_id);
             return { success: true };
         } catch (err) {
@@ -226,7 +208,9 @@ const UserModel = {
 
     async user_add_loss(db, user_id) {
         try {
-            const stmt = db.prepare(`UPDATE users SET loses = loses + 1 WHERE id = ?`);
+            const stmt = db.prepare(
+                `UPDATE users SET loses = loses + 1 WHERE id = ?`,
+            );
             await stmt.run(user_id);
             return { success: true };
         } catch (err) {
@@ -234,6 +218,29 @@ const UserModel = {
         }
     },
 
-}
+    async get_user_match_history(db, user_id) {
+        try {
+            const stmt = db.prepare(`
+                SELECT
+                    m.id,
+                    p1.name as player1_name,
+                    p2.name as player2_name,
+                    m.winner_id,
+                    m.created_at
+                FROM matches m
+                JOIN users p1 ON m.player1_id = p1.id
+                LEFT JOIN users p2 ON m.player2_id = p2.id
+                WHERE (m.player1_id = ? OR m.player2_id = ?) AND m.status = 'completed'
+                ORDER BY m.created_at DESC
+                LIMIT 20
+            `);
+            const res = await stmt.all(user_id, user_id);
+            return { success: true, code: 200, result: res };
+        } catch (err) {
+            return { success: false, code: 500, result: err.message };
+        }
+    },
 
-module.exports = UserModel
+};
+
+module.exports = UserModel;

@@ -1,55 +1,31 @@
-const UserCtrl = require('../controllers/controllers.users')
+const UserCtrl = require("../controllers/controllers.users");
 
-const clients = new Set();
-
-function UserRoutes(fastify)
-{
-    fastify.post('/', {
+function UserRoutes(fastify, options, done) {
+    fastify.post("/", {
         schema: {
             body: {
-                type: 'object',
-                required: ['name', 'email', 'password'], // avatar is optional
+                type: "object",
+                required: ["name", "email", "password"],
                 properties: {
-                    name: { type: 'string' },
-                    email: { type: 'string' },
-                    password: { type: 'string' },
-                    avatar: { type: 'string' }
-                }
-            }
-        }
+                    name: { type: "string" },
+                    email: { type: "string" },
+                    password: { type: "string" },
+                },
+            },
+        },
+    }, UserCtrl.CreateUser);
 
-    }, UserCtrl.CreateUser)
+    fastify.get("/", { onRequest: [fastify.auth] }, UserCtrl.GetAllUsers);
+    fastify.get("/me", { onRequest: [fastify.auth] }, UserCtrl.GetMyProfile);
+    fastify.get("/:id", { onRequest: [fastify.auth] }, UserCtrl.GetUserById);
+    fastify.get(
+        "/:id/matches",
+        { onRequest: [fastify.auth] },
+        UserCtrl.getUserMatchHistory,
+    );
+    fastify.delete("/:id", { onRequest: [fastify.auth] }, UserCtrl.DeleteUser);
 
-    fastify.put('/:id', {
-        onRequest: [fastify.auth],
-        schema: {
-            body: {
-                type: 'object',
-                properties: {
-                    name: { type: 'string' },
-                    email: { type: 'string' },
-                    password: { type: 'string' },
-                    avatar: { type: 'string' }
-                }
-            }
-        }
-
-    }, UserCtrl.UpdateUser)
-
-    fastify.get('/', UserCtrl.GetAllUsers)
-
-    fastify.get('/:id', {
-        onRequest: [fastify.auth]
-    }, UserCtrl.GetUserById)
-
-    fastify.delete('/:id', {
-        onRequest: [fastify.auth]
-    } , UserCtrl.DeleteUser)
-
-    fastify.get('/me', {
-        onRequest: [fastify.auth]
-    }, UserCtrl.GetMyProfile)
-
+    done();
 }
 
-module.exports = UserRoutes
+module.exports = UserRoutes;

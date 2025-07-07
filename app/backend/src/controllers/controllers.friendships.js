@@ -1,7 +1,7 @@
 const FriendshipModel = require("../models/models.friendships");
 
 const FriendshipCtrl = {
-    async sendFriendRequest(request, reply) {
+    sendFriendRequest: async (request, reply) => {
         const sender_id = request.user.payload.id;
         const { receiver_id } = request.body;
         if (sender_id === receiver_id) {
@@ -18,7 +18,7 @@ const FriendshipCtrl = {
             ),
         );
     },
-    async getPendingRequests(request, reply) {
+    getPendingRequests: async (request, reply) => {
         reply.send(
             await FriendshipModel.get_pending_requests(
                 this.db,
@@ -26,7 +26,7 @@ const FriendshipCtrl = {
             ),
         );
     },
-    async acceptFriendRequest(request, reply) {
+    acceptFriendRequest: async (request, reply) => {
         reply.send(
             await FriendshipModel.accept_friend_request(
                 this.db,
@@ -35,7 +35,7 @@ const FriendshipCtrl = {
             ),
         );
     },
-    async declineFriendRequest(request, reply) {
+    declineFriendRequest: async (request, reply) => {
         reply.send(
             await FriendshipModel.decline_friend_request(
                 this.db,
@@ -44,7 +44,7 @@ const FriendshipCtrl = {
             ),
         );
     },
-    async cancelFriendRequest(request, reply) {
+    cancelFriendRequest: async (request, reply) => {
         reply.send(
             await FriendshipModel.cancel_friend_request(
                 this.db,
@@ -53,7 +53,7 @@ const FriendshipCtrl = {
             ),
         );
     },
-    async removeFriend(request, reply) {
+    removeFriend: async (request, reply) => {
         reply.send(
             await FriendshipModel.remove_friend(
                 this.db,
@@ -62,12 +62,12 @@ const FriendshipCtrl = {
             ),
         );
     },
-    async getFriends(request, reply) {
+    getFriends: async (request, reply) => {
         reply.send(
             await FriendshipModel.get_friends(this.db, request.user.payload.id),
         );
     },
-    async getFriendIds(request, reply) {
+    getFriendIds: async (request, reply) => {
         reply.send(
             await FriendshipModel.get_friend_ids(
                 this.db,
@@ -75,7 +75,7 @@ const FriendshipCtrl = {
             ),
         );
     },
-    async getAllRequestStatuses(request, reply) {
+    getAllRequestStatuses: async (request, reply) => {
         reply.send(
             await FriendshipModel.get_all_request_statuses(
                 this.db,
@@ -83,19 +83,37 @@ const FriendshipCtrl = {
             ),
         );
     },
-    async blockUser(request, reply) {
-        const blocker_id = request.user.payload.id;
+    blockUser: async (request, reply) => {
         const { blocked_id } = request.body;
+        await FriendshipModel.remove_friend(
+            this.db,
+            request.user.payload.id,
+            blocked_id,
+        );
         reply.send(
-            await FriendshipModel.block_user(this.db, blocker_id, blocked_id),
+            await FriendshipModel.block_user(
+                this.db,
+                request.user.payload.id,
+                blocked_id,
+            ),
         );
     },
-    async unblockUser(request, reply) {
-        const blocker_id = request.user.payload.id;
-        const { blocked_id } = request.body;
+    unblockUser: async (request, reply) => {
         reply.send(
-            await FriendshipModel.unblock_user(this.db, blocker_id, blocked_id),
+            await FriendshipModel.unblock_user(
+                this.db,
+                request.user.payload.id,
+                request.body.blocked_id,
+            ),
         );
+    },
+    getBlockStatus: async (request, reply) => {
+        const blocker_id = request.user.payload.id;
+        const blocked_id = request.params.id;
+        const res = await this.db.prepare(
+            `SELECT 1 FROM blocked_users WHERE blocker_id = ? AND blocked_id = ?`,
+        ).get(blocker_id, blocked_id);
+        reply.send({ success: true, result: { isBlocked: !!res } });
     },
 };
 

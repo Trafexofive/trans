@@ -1,9 +1,6 @@
 "use client";
 
-
 // will only be used to route /profile/ to the logged-in user's profile (/profile/[id])
-
-
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
