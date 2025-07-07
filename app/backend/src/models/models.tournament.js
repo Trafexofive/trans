@@ -1,3 +1,4 @@
+
 const TournamentModel = {
     // Initializes the main tournaments table
     tournaments_init() {
@@ -33,6 +34,7 @@ const TournamentModel = {
             player2_id INTEGER, -- Can be null for a bye
             winner_id INTEGER,
             status TEXT NOT NULL DEFAULT 'pending', -- pending, in_progress, completed
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE,
             FOREIGN KEY (player1_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY (player2_id) REFERENCES users(id) ON DELETE CASCADE,
