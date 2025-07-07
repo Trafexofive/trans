@@ -176,35 +176,29 @@ list-networks: ## List Docker networks
 # CLEANING & PRUNING
 # ======================================================================================
 
-clean: ## Remove stopped service containers and default network created by this compose file
+clean:
 	@echo -e "$(YELLOW)Sanitizing workspace for $(COMPOSE_FILE)... Removing stopped containers and networks.$(NC)"
-	@$(COMPOSE) down --remove-orphans --rmi 'none' # Keep images
+	# @$(COMPOSE) down --remove-orphans --rmi 
 
-fclean: ## Perform 'clean' and also remove volumes DEFINED IN THE COMPOSE FILE (DANGER!)
-	@echo -e "$(RED)WARNING: This will remove ALL volumes explicitly defined and used in $(COMPOSE_FILE)!$(NC)"
-	@read -p "Are you absolutely sure you want to proceed with fclean for $(COMPOSE_FILE)? (yes/NO): " choice; \
-	if [ "$$choice" = "yes" ]; then \
-		echo -e "$(RED)Executing Full Data Purge for $(COMPOSE_FILE)... This is FAAFO at its most destructive!$(NC)"; \
-		$(COMPOSE) down --volumes --remove-orphans --rmi 'none'; \
-		echo -e "$(GREEN)Compose-defined volumes removed.$(NC)"; \
-	else \
-		echo -e "$(YELLOW)fclean aborted by user.$(NC)"; \
-	fi
+fclean: clean 
+	$(COMPOSE) down --volumes --remove-orphans --rmi 'none'; \
+	echo -e "$(GREEN)Compose-defined volumes removed.$(NC)"; \
 
-prune: ## Prune unused Docker images, build cache, and dangling volumes (DOCKER SYSTEM PRUNE)
-	@echo -e "$(YELLOW)Initiating Docker System Prune... This will remove unused GLOBAL Docker resources. If You didnt use bind mount u are cooked.$(NC)"
-	docker system prune -af --volumes; \
-	docker builder prune -af; \
+prune: fclean
+	docker system prune -af --volumes
+	docker builder prune -af
+	docker volume prune -af 
 	echo -e "$(GREEN)Docker system prune complete.$(NC)"; \
 
 .PHONY: app elk monitoring
 
 clean-nodejs:
-	@echo -e "$(YELLOW)Cleaning Node.js modules...$(NC)"
-	@sudo rm -rf backend/node_modules
-	@sudo rm -rf frontend/node_modules
-	@sudo rm -rf frontend/.next
-	@echo -e "$(GREEN)Node.js modules cleaned.$(NC)"
+	@echo -e "$(YELLOW)Cleaning Externals...$(NC)"
+	@sudo rm -rf app/backend/node_modules
+	@sudo rm -rf app/frontend/node_modules
+	@sudo rm -rf app/frontend/.next
+	@sudo rm -rf app/backend/database.db
+	@echo -e "$(GREEN)Externals cleaned.$(NC)"
 
 app: 
 	$(COMPOSE) up -d --build frontend && make logs

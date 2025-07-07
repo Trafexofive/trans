@@ -4,6 +4,7 @@
  * A placeholder for the user settings page.
  * It provides a basic structure that can be expanded upon later.
  * This prevents the "page not found" error when navigating from the profile menu.
+ * We need user update functionality to be implemented in the backend first.
  */
 export default function SettingsPage() {
   return (
