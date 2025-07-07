@@ -20,12 +20,12 @@ const ChatMessageContent = ({ content }: { content: string }) => {
 };
 
 interface ConversationPartner { id: number; name: string; avatar: string; }
-interface Message { id: number; from: number; to: number; content: string; timestamp: string; }
 
 export default function ChatPage() {
     const { user, accessToken, isLoading, chatMessages, sendChatMessage, loadChatHistory, chatPartners, friendAction, unreadFrom, clearUnreadMessages } = useAuth();
     const router = useRouter();
     const searchParams = useSearchParams();
+    
     const [activePartner, setActivePartner] = useState<ConversationPartner | null>(null);
     const [newMessage, setNewMessage] = useState("");
     const [isBlockedByMe, setIsBlockedByMe] = useState(false);
@@ -33,11 +33,11 @@ export default function ChatPage() {
     const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
     const fetchBlockStatus = useCallback(async (partnerId: number) => {
-        if (!accessToken) return;
+        if(!accessToken) return;
         try {
             const res = await fetch(`${API_BASE_URL}/api/friendships/block/${partnerId}`, { headers: { 'Authorization': `Bearer ${accessToken}` } });
             const data = await res.json();
-            if (data.success) setIsBlockedByMe(data.result.isBlocked);
+            if(data.success) setIsBlockedByMe(data.result.isBlocked);
         } catch (e) { console.error("Failed to fetch block status", e); }
     }, [accessToken, API_BASE_URL]);
 
@@ -68,7 +68,7 @@ export default function ChatPage() {
         if (window.confirm(confirmText)) {
             await friendAction(activePartner.id, action);
             if (action === 'remove' || action === 'block') router.push('/chat');
-            else fetchBlockStatus(activePartner.id); // Re-fetch status on unblock
+            else fetchBlockStatus(activePartner.id); 
         }
     };
 

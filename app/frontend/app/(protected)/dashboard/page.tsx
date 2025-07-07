@@ -4,26 +4,10 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/app/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 
-// Data structures for the dashboard
-interface Friend {
-  id: number;
-  name: string;
-  avatar: string;
-}
-interface Match {
-  id: number;
-  opponent: { name: string; };
-  result: 'Win' | 'Loss';
-  score: string;
-}
-interface Stats {
-  totalMatches: number;
-  winRate: string;
-  wins: number;
-  losses: number;
-}
+interface Friend { id: number; name: string; avatar: string; }
+interface Match { id: number; opponent: { name: string; }; result: 'Win' | 'Loss'; score: string; }
+interface Stats { totalMatches: number; winRate: string; wins: number; losses: number; }
 
-// A reusable card for displaying key statistics.
 const StatCard = ({ title, value, icon }: { title: string, value: string | number, icon: string }) => (
     <div className="bg-[#1a1a1c] p-6 rounded-lg flex items-center gap-4 border border-gray-800 hover:border-gray-700 transition-colors">
         <div className="text-4xl">{icon}</div>
@@ -33,7 +17,6 @@ const StatCard = ({ title, value, icon }: { title: string, value: string | numbe
         </div>
     </div>
 );
-
 
 export default function DashboardPage() {
     const { user, accessToken, isLoading: isAuthLoading } = useAuth();
@@ -48,12 +31,10 @@ export default function DashboardPage() {
     useEffect(() => {
         if (isAuthLoading || !user || !accessToken) return;
 
-        // 1. Calculate stats from the user object in context.
         const totalMatches = user.wins + user.loses;
         const winRate = totalMatches > 0 ? `${Math.round((user.wins / totalMatches) * 100)}%` : 'N/A';
         setStats({ totalMatches, winRate, wins: user.wins, losses: user.loses });
 
-        // 2. Fetch the user's friends list.
         const fetchFriends = async () => {
             try {
                 const response = await fetch(`${API_BASE_URL}/api/friendships`, {
@@ -65,17 +46,13 @@ export default function DashboardPage() {
             } catch (err: any) {
                 console.error("Error fetching friends:", err);
                 setError("Could not load friends list.");
-                setFriends([]); // Ensure it's an empty array on error to prevent crashes.
+                setFriends([]);
             }
         };
 
-        // 3. Fetch match history (placeholder).
         const fetchMatches = async () => {
-            console.warn("Match history fetching is not yet implemented. Using placeholder data.");
-            setMatches([
-                { id: 1, opponent: { name: 'PlayerX' }, result: 'Win', score: '11-5' },
-                { id: 2, opponent: { name: 'PlayerY' }, result: 'Loss', score: '9-11' },
-            ]);
+            console.warn("Match history fetching is not implemented.");
+            setMatches([]);
         };
 
         fetchFriends();
@@ -83,33 +60,23 @@ export default function DashboardPage() {
 
     }, [user, accessToken, isAuthLoading, API_BASE_URL]);
 
-    if (isAuthLoading || !user) {
-        return <div className="p-10 text-center text-white">Loading Dashboard...</div>;
-    }
-
-    if (error) {
-        return <div className="p-10 text-center text-red-500">{error}</div>;
-    }
+    if (isAuthLoading || !user) return <div className="p-10 text-center text-white">Loading Dashboard...</div>;
+    if (error) return <div className="p-10 text-center text-red-500">{error}</div>;
 
     return (
         <div className="page-container space-y-8">
-            <div>
-                <h1 className="text-3xl font-bold text-white">Welcome, {user.name}!</h1>
-                <p className="text-gray-400">Here's a look at your journey in the world of Pong.</p>
-            </div>
-            
+            <div><h1 className="text-3xl font-bold text-white">Welcome, {user.name}!</h1><p className="text-gray-400">Here's a look at your journey in the world of Pong.</p></div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard title="Wins" value={stats?.wins ?? 0} icon="🏆" />
                 <StatCard title="Losses" value={stats?.losses ?? 0} icon="💀" />
                 <StatCard title="Total Matches" value={stats?.totalMatches ?? 0} icon="🎮" />
                 <StatCard title="Win Rate" value={stats?.winRate ?? 'N/A'} icon="📈" />
             </div>
-
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 space-y-6">
                     <div>
-                         <h2 className="text-xl font-semibold text-white mb-4">Quick Actions</h2>
-                         <div className="flex flex-col sm:flex-row gap-4">
+                        <h2 className="text-xl font-semibold text-white mb-4">Quick Actions</h2>
+                        <div className="flex flex-col sm:flex-row gap-4">
                             <button onClick={() => router.push('/play')} className="btn btn-primary flex-1">Find a Match</button>
                             <button onClick={() => router.push('/tournaments')} className="btn btn-secondary flex-1">Browse Tournaments</button>
                         </div>
@@ -127,12 +94,8 @@ export default function DashboardPage() {
                         </div>
                     </div>
                 </div>
-
                 <div className="bg-[#1a1a1c] p-4 rounded-lg space-y-4 border border-gray-800">
-                    <div className="flex justify-between items-center">
-                        <h2 className="text-xl font-semibold text-white">Friends</h2>
-                        <button onClick={() => router.push('/leaderboard')} className="text-sm text-blue-400 hover:underline">Manage</button>
-                    </div>
+                    <div className="flex justify-between items-center"><h2 className="text-xl font-semibold text-white">Friends</h2><button onClick={() => router.push('/leaderboard')} className="text-sm text-blue-400 hover:underline">Manage</button></div>
                     <div className="space-y-3 max-h-96 overflow-y-auto">
                         {friends.length > 0 ? friends.map(friend => (
                             <div key={friend.id} onClick={() => router.push(`/profile/${friend.id}`)} className="flex items-center gap-3 p-2 rounded hover:bg-[#29282b] cursor-pointer transition-colors">

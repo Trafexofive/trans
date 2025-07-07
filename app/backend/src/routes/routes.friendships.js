@@ -1,7 +1,16 @@
 const FriendshipCtrl = require("../controllers/controllers.friendships");
 
 async function FriendshipRoutes(fastify, options) {
+    // GET /               -> Gets the LOGGED-IN user's own friend list.
+    // GET /user/:id       -> Gets the specified user's friend list (for profile pages).
+
     fastify.get("/", { onRequest: [fastify.auth] }, FriendshipCtrl.getFriends);
+    fastify.get(
+        "/user/:id",
+        { onRequest: [fastify.auth] },
+        FriendshipCtrl.getFriends,
+    );
+
     fastify.get(
         "/ids",
         { onRequest: [fastify.auth] },
@@ -13,12 +22,7 @@ async function FriendshipRoutes(fastify, options) {
         FriendshipCtrl.removeFriend,
     );
 
-    fastify.get(
-        "/user/:id",
-        { onRequest: [fastify.auth] },
-        FriendshipCtrl.getFriends,
-    );
-
+    // Friend Request Workflow
     fastify.get(
         "/requests",
         { onRequest: [fastify.auth] },
