@@ -9,6 +9,7 @@ import {
     useRef,
     useState,
 } from "react";
+
 import { jwtDecode } from "jwt-decode";
 
 // --- Interfaces ---
@@ -56,7 +57,7 @@ interface AuthContextType {
     login: (email: string, password: string) => Promise<void>;
     logout: () => void;
     // Centralized State and Actions
-    chatMessages: ChatMessage[];
+    chats: Map<number, ChatMessage[]>;
     chatPartners: ChatPartner[];
     friendIds: Set<number>;
     pendingRequests: FriendRequest[];
@@ -77,6 +78,7 @@ interface AuthContextType {
         requestId?: number,
     ) => Promise<void>;
     clearUnreadMessages: (partnerId: number) => void;
+    fetchFriendData: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -90,7 +92,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
     const [accessToken, setAccessToken] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+    const [chats, setChats] = useState<Map<number, ChatMessage[]>>(new Map());
     const [friendIds, setFriendIds] = useState<Set<number>>(new Set());
     const [pendingRequests, setPendingRequests] = useState<FriendRequest[]>([]);
     const [requestStatuses, setRequestStatuses] = useState<FriendRequestStatus>(
@@ -101,7 +103,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const socketRef = useRef<WebSocket | null>(null);
     const activeChatPartnerId = useRef<number | null>(null);
 
-    const fetchAllData = useCallback(async (token: string) => {
+    const fetchFriendData = useCallback(async (token: string) => {
         try {
             const [friendsRes, requestsRes, statusesRes, partnersRes] =
                 await Promise.all([
@@ -193,12 +195,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     body,
                 });
                 if (!response.ok) throw new Error("Action failed");
-                await fetchAllData(accessToken); // Re-fetch ALL data on success
+                await fetchFriendData(accessToken);
             } catch (error) {
                 console.error(`Friend action '${action}' failed:`, error);
             }
         },
-        [accessToken, fetchAllData],
+        [accessToken, fetchFriendData],
     );
 
     useEffect(() => {
@@ -218,8 +220,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }, []);
 
     useEffect(() => {
-        if (accessToken) {
-            fetchAllData(accessToken);
+        if (accessToken && user) {
+            fetchFriendData(accessToken);
 
             if (socketRef.current) socketRef.current.close();
 
@@ -229,15 +231,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             );
             socketRef.current = socket;
             socket.onmessage = (event) => {
-                const message = JSON.parse(event.data);
-                setChatMessages((prev) => [...prev, message]);
+                const message: ChatMessage = JSON.parse(event.data);
+                const partnerId = message.from === user.id
+                    ? message.to
+                    : message.from;
+
+                setChats((prevChats) => {
+                    const newChats = new Map(prevChats);
+                    const currentMessages = newChats.get(partnerId) || [];
+                    if (!currentMessages.some((m) => m.id === message.id)) {
+                        newChats.set(partnerId, [...currentMessages, message]);
+                    }
+                    return newChats;
+                });
+
                 if (message.from !== activeChatPartnerId.current) {
                     setUnreadFrom((prev) => new Set(prev).add(message.from));
                 }
             };
             return () => socket.close();
         }
-    }, [accessToken, fetchAllData]);
+    }, [accessToken, fetchFriendData, user]);
 
     const login = async (email: string, password: string) => {
         const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
@@ -261,7 +275,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const logout = () => {
         setUser(null);
         setAccessToken(null);
-        setChatMessages([]);
+        setChats(new Map());
         setFriendIds(new Set());
         setPendingRequests([]);
         setRequestStatuses({ sent: [], received: [] });
@@ -271,24 +285,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const loadChatHistory = useCallback(async (partnerId: number) => {
-        if (!accessToken) return;
+        if (!accessToken || chats.has(partnerId)) return;
+
         const response = await fetch(`${API_BASE_URL}/api/chat/${partnerId}`, {
             headers: { "Authorization": `Bearer ${accessToken}` },
         });
         const data = await response.json();
         if (data.success && Array.isArray(data.result)) {
-            setChatMessages((prev) => {
-                const existingIds = new Set(prev.map((msg) => msg.id));
-                const newHistory = data.result.filter((msg: ChatMessage) =>
-                    !existingIds.has(msg.id)
-                );
-                return [...prev, ...newHistory].sort((a, b) =>
-                    new Date(a.timestamp).getTime() -
+            setChats((prevChats) => {
+                const newChats = new Map(prevChats);
+                const sortedHistory = data.result.sort((
+                    a: ChatMessage,
+                    b: ChatMessage,
+                ) => new Date(a.timestamp).getTime() -
                     new Date(b.timestamp).getTime()
                 );
+                newChats.set(partnerId, sortedHistory);
+                return newChats;
             });
         }
-    }, [accessToken]);
+    }, [accessToken, chats]);
 
     const sendChatMessage = useCallback((to: number, content: string) => {
         if (socketRef.current?.readyState === WebSocket.OPEN) {
@@ -305,14 +321,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         activeChatPartnerId.current = partnerId;
     }, []);
 
-    const value = {
+    const value: AuthContextType = {
         user,
         accessToken,
         isAuthenticated: !!accessToken,
         isLoading,
         login,
         logout,
-        chatMessages,
+        chats,
         chatPartners,
         sendChatMessage,
         loadChatHistory,
@@ -320,7 +336,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         pendingRequests,
         requestStatuses,
         friendAction,
+        unreadFrom,
         clearUnreadMessages,
+        fetchFriendData: () => {
+            if (accessToken) return fetchFriendData(accessToken);
+            return Promise.resolve();
+        },
     };
 
     return <AuthContext.Provider value={value}>{children}
