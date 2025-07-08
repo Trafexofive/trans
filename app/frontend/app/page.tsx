@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "./contexts/AuthContext";
+import Spinner from "./components/Spinner"; 
 
 /**
  * LandingPage: The primary entry point for all users.
@@ -14,6 +15,15 @@ import { useAuth } from "./contexts/AuthContext";
  * - If the user is not authenticated, it displays the public-facing
  *   hero section with login/register calls to action.
  */
+
+// components/Spinner.jsx
+const Spinner = ({ size = "12", color = "white" }) => {
+    return (
+        <div
+            className={`animate-spin rounded-full h-${size} w-${size} border-b-2 border-${color}`}
+        />
+    );
+};
 
 export default function LandingPage() {
     const { isAuthenticated, isLoading } = useAuth();
@@ -31,7 +41,7 @@ export default function LandingPage() {
     if (isLoading || isAuthenticated) {
         return (
             <div className="flex min-h-screen items-center justify-center bg-gray-900">
-                {/* You can replace this with a dedicated spinner component */}
+                <Spinner />
             </div>
         );
     }

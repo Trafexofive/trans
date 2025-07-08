@@ -24,7 +24,7 @@ export default function AppNavbar() {
           <Link href="/dashboard" className={getNavLinkClass('/dashboard')}>Dashboard</Link>
         </div>
         <div className="navbar-right flex items-center gap-4">
-            <FriendRequestsMenu /> {/* <-- NEW */}
+            <FriendRequestsMenu /> { }
             <ProfileMenu />
         </div>
       </div>

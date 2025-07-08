@@ -22,11 +22,13 @@ interface User {
     wins: number;
     loses: number;
 }
+
 interface DecodedToken {
     payload: User;
     iat: number;
     exp: number;
 }
+
 interface ChatMessage {
     id: number;
     from: number;
@@ -34,16 +36,19 @@ interface ChatMessage {
     content: string;
     timestamp: string;
 }
+
 export interface FriendRequest {
     id: number;
     sender_id: number;
     sender_name: string;
     sender_avatar: string;
 }
+
 export interface FriendRequestStatus {
     sent: { receiver_id: number; id: number }[];
     received: { sender_id: number; id: number }[];
 }
+
 export interface ChatPartner {
     id: number;
     name: string;
@@ -378,3 +383,4 @@ export const useAuth = (): AuthContextType => {
     }
     return context;
 };
+
