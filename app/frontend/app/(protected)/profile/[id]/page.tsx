@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useAuth } from "@/app/contexts/AuthContext";
+import { Friend, useAuth } from "@/app/contexts/AuthContext";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-// Interfaces
+// --- Interfaces ---
 interface UserProfile {
     id: number;
     name: string;
@@ -20,16 +20,11 @@ interface MatchHistory {
     winner_id: number;
     created_at: string;
 }
-interface Friend {
-    id: number;
-    name: string;
-    avatar: string;
-}
 interface ProfilePageProps {
     params: { id: string };
 }
 
-// Reusable Components
+// --- Reusable Components ---
 const StatCard = (
     { title, value }: { title: string; value: string | number },
 ) => (
@@ -49,7 +44,6 @@ const ActionButton = (
             </Link>
         );
     }
-
     const isFriend = friendIds.has(targetUser.id);
     const sentRequest = requestStatuses.sent.find((req: any) =>
         req.receiver_id === targetUser.id
@@ -100,7 +94,7 @@ const ActionButton = (
     );
 };
 
-// Main Profile Page Component
+// --- Main Profile Page Component ---
 export default function ProfilePage({ params }: ProfilePageProps) {
     const {
         user: loggedInUser,
@@ -108,7 +102,6 @@ export default function ProfilePage({ params }: ProfilePageProps) {
         friendIds,
         requestStatuses,
         friendAction,
-        fetchFriendData,
         logout,
     } = useAuth();
     const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -121,53 +114,48 @@ export default function ProfilePage({ params }: ProfilePageProps) {
     const [error, setError] = useState<string | null>(null);
     const userId = params.id;
 
-    const fetchProfileData = useCallback(async () => {
-        if (!userId || !accessToken) return;
-        setIsLoading(true);
-        setError(null);
-        try {
-            const [profileRes, historyRes, friendsRes] = await Promise.all([
-                fetch(`${API_BASE_URL}/api/users/${userId}`, {
-                    headers: { "Authorization": `Bearer ${accessToken}` },
-                }),
-                fetch(`${API_BASE_URL}/api/users/${userId}/matches`, {
-                    headers: { "Authorization": `Bearer ${accessToken}` },
-                }),
-                fetch(`${API_BASE_URL}/api/friendships/user/${userId}`, {
-                    headers: { "Authorization": `Bearer ${accessToken}` },
-                }),
-            ]);
-
-            if (profileRes.status === 401 || profileRes.status === 404) {
-                logout();
-                router.push("/login");
-                return;
-            }
-
-            const profileData = await profileRes.json();
-            const historyData = await historyRes.json();
-            const friendsData = await friendsRes.json();
-
-            if (!profileData.success) {
-                throw new Error(profileData.result || "User not found.");
-            }
-
-            setProfile(profileData.result);
-            setMatchHistory(historyData.success ? historyData.result : []);
-            setFriends(friendsData.success ? friendsData.result : []);
-        } catch (err: any) {
-            setError(err.message);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [userId, accessToken, API_BASE_URL, logout, router]);
-
     useEffect(() => {
+        const fetchProfileData = async () => {
+            if (!userId || !accessToken) return;
+            setIsLoading(true);
+            setError(null);
+            try {
+                const [profileRes, historyRes, friendsRes] = await Promise.all([
+                    fetch(`${API_BASE_URL}/api/users/${userId}`, {
+                        headers: { "Authorization": `Bearer ${accessToken}` },
+                    }),
+                    fetch(`${API_BASE_URL}/api/users/${userId}/matches`, {
+                        headers: { "Authorization": `Bearer ${accessToken}` },
+                    }),
+                    fetch(`${API_BASE_URL}/api/friendships/user/${userId}`, {
+                        headers: { "Authorization": `Bearer ${accessToken}` },
+                    }),
+                ]);
+
+                if (profileRes.status === 401) {
+                    logout();
+                    router.push("/login");
+                    return;
+                }
+                const profileData = await profileRes.json();
+                if (!profileData.success) {
+                    throw new Error(profileData.result || "User not found.");
+                }
+
+                const historyData = await historyRes.json();
+                const friendsData = await friendsRes.json();
+                setProfile(profileData.result);
+                setMatchHistory(historyData.success ? historyData.result : []);
+                setFriends(friendsData.success ? friendsData.result : []);
+            } catch (err: any) {
+                setError(err.message);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
         fetchProfileData();
-        if (loggedInUser) {
-            fetchFriendData();
-        }
-    }, [userId, loggedInUser, fetchProfileData, fetchFriendData]);
+    }, [userId, accessToken, API_BASE_URL, logout, router]);
 
     if (isLoading) {
         return (
@@ -344,4 +332,3 @@ export default function ProfilePage({ params }: ProfilePageProps) {
         </div>
     );
 }
-

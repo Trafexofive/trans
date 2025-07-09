@@ -1,14 +1,4 @@
-// chat fields :
-// id -> PRIMARY KEY
-// sender_id -> FOREING KEY (user id)
-// recipient_id -> FOREING KEY (user id)
-// message -> TEXT
-// delivered -> BOOLEAN
-// delivered_at -> DATE
-// created_at  -> DATE
-
 const ChatModel = {
-
     chat_init() {
         return `CREATE TABLE IF NOT EXISTS chat (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -20,18 +10,17 @@ const ChatModel = {
 			delivered_at TIMESTAMP,
 			FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
 			FOREIGN KEY (recipient_id) REFERENCES users(id) ON DELETE CASCADE
-		);`
+		);`;
     },
 
     chat_sender_id_index() {
         return `CREATE INDEX IF NOT EXISTS idx_chat_sender ON chat (sender_id);`;
     },
 
-	chat_recipient_id_index() {
+    chat_recipient_id_index() {
         return `CREATE INDEX IF NOT EXISTS idx_chat_recipient ON chat (recipient_id);`;
     },
 
-    // --- NEW: Gets a single message by its DB ID ---
     async chat_get_message_by_db_id(db, messageId) {
         try {
             const stmt = db.prepare(`
@@ -47,7 +36,6 @@ const ChatModel = {
 
     async chat_get_by_id(db, sender_id, recipient_id, limit = 50, offset = 0) {
         try {
-            // --- UPDATED: Aliased columns to match frontend data structure ---
             const stmt = db.prepare(`
                 SELECT id, sender_id as 'from', recipient_id as 'to', message as content, created_at as timestamp 
                 FROM chat
@@ -55,31 +43,66 @@ const ChatModel = {
 				ORDER BY created_at ASC
 				LIMIT ? OFFSET ?
             `);
-            const res = await stmt.all(sender_id, recipient_id, recipient_id, sender_id, limit, offset);
+            const res = await stmt.all(
+                sender_id,
+                recipient_id,
+                recipient_id,
+                sender_id,
+                limit,
+                offset,
+            );
             return { success: true, code: 200, result: res };
         } catch (err) {
             return { success: false, code: 500, result: err.message };
         }
     },
-    
+
     async chat_create(db, msg_data) {
         try {
             const stmt = db.prepare(`
                 INSERT INTO chat (sender_id, recipient_id, message, is_delivered, delivered_at)
                 VALUES (?, ?, ?, ?, ?)
             `);
-            const { sender_id, recipient_id, message, is_delivered, delivered_at = null } = msg_data;
-            const res = await stmt.run(sender_id, recipient_id, message, is_delivered, delivered_at);
-            // --- CRITICAL: Return the ID of the new message ---
+            const {
+                sender_id,
+                recipient_id,
+                message,
+                is_delivered,
+                delivered_at = null,
+            } = msg_data;
+            const res = await stmt.run(
+                sender_id,
+                recipient_id,
+                message,
+                is_delivered,
+                delivered_at,
+            );
             return { success: true, code: 201, result: res.lastInsertRowid };
         } catch (err) {
             return { success: false, code: 500, result: err.message };
-		}
+        }
     },
 
-	async chat_get_unread(db, recipient_id) {
-		try {
-            // --- UPDATED: Aliased columns to match frontend data structure ---
+    // NEW: Function to delete the entire conversation between two users.
+    async chat_delete_conversation(db, user1_id, user2_id) {
+        try {
+            const stmt = db.prepare(`
+                DELETE FROM chat
+                WHERE (sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?)
+            `);
+            await stmt.run(user1_id, user2_id, user2_id, user1_id);
+            return {
+                success: true,
+                code: 200,
+                result: "Conversation deleted.",
+            };
+        } catch (err) {
+            return { success: false, code: 500, result: err.message };
+        }
+    },
+
+    async chat_get_unread(db, recipient_id) {
+        try {
             const stmt = db.prepare(`
 				SELECT id, sender_id as 'from', recipient_id as 'to', message as content, created_at as timestamp 
                 FROM chat
@@ -90,8 +113,8 @@ const ChatModel = {
             return { success: true, code: 200, result: res };
         } catch (err) {
             return { success: false, code: 500, result: err.message };
-		}
-	},
+        }
+    },
 
     async chat_mark_delivered_bulk(db, recipient_id) {
         try {
@@ -109,7 +132,7 @@ const ChatModel = {
 
     async chat_get_profiles(db, user_id) {
         try {
-             const stmt = db.prepare(`
+            const stmt = db.prepare(`
                 SELECT u.id, u.name, u.email, u.avatar, u.wins, u.loses
                 FROM users u
                 WHERE u.id IN (
@@ -124,13 +147,18 @@ const ChatModel = {
                 AND u.id != ?
                 ORDER BY u.name;
             `);
-            const res = await stmt.all(user_id, user_id, user_id, user_id, user_id);
+            const res = await stmt.all(
+                user_id,
+                user_id,
+                user_id,
+                user_id,
+                user_id,
+            );
             return { success: true, code: 200, result: res };
-        }
-        catch (err) {
+        } catch (err) {
             return { success: false, code: 500, result: err.message };
         }
-    }
+    },
 };
 
 module.exports = ChatModel;

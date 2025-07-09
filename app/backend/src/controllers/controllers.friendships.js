@@ -1,9 +1,6 @@
 const FriendshipModel = require("../models/models.friendships");
 
 const FriendshipCtrl = {
-    // This is the primary function for fetching a friend list.
-    // If the request has a URL parameter, it fetches for that user ID.
-    // Otherwise, it fetches for the authenticated user making the request.
     async getFriends(request, reply) {
         const user_id = request.params.id || request.user.payload.id;
         const res = await FriendshipModel.get_friends(this.db, user_id);
@@ -15,9 +12,10 @@ const FriendshipCtrl = {
         const res = await FriendshipModel.get_friend_ids(this.db, user_id);
         reply.code(res.code).send(res);
     },
+
     async removeFriend(request, reply) {
         const user_id = request.user.payload.id;
-        const { friend_id } = request.body;
+        const friend_id = request.params.friend_id;
         const res = await FriendshipModel.remove_friend(
             this.db,
             user_id,
@@ -25,6 +23,7 @@ const FriendshipCtrl = {
         );
         reply.code(res.code).send(res);
     },
+
     async sendFriendRequest(request, reply) {
         const sender_id = request.user.payload.id;
         const { receiver_id } = request.body;
@@ -41,6 +40,7 @@ const FriendshipCtrl = {
         );
         reply.code(res.code).send(res);
     },
+
     async getPendingRequests(request, reply) {
         const res = await FriendshipModel.get_pending_requests(
             this.db,
@@ -48,6 +48,7 @@ const FriendshipCtrl = {
         );
         reply.code(res.code).send(res);
     },
+
     async acceptFriendRequest(request, reply) {
         const res = await FriendshipModel.accept_friend_request(
             this.db,
@@ -56,6 +57,7 @@ const FriendshipCtrl = {
         );
         reply.code(res.code).send(res);
     },
+
     async declineFriendRequest(request, reply) {
         const res = await FriendshipModel.decline_friend_request(
             this.db,
@@ -64,6 +66,7 @@ const FriendshipCtrl = {
         );
         reply.code(res.code).send(res);
     },
+
     async cancelFriendRequest(request, reply) {
         const res = await FriendshipModel.cancel_friend_request(
             this.db,
@@ -72,6 +75,7 @@ const FriendshipCtrl = {
         );
         reply.code(res.code).send(res);
     },
+
     async getAllRequestStatuses(request, reply) {
         const res = await FriendshipModel.get_all_request_statuses(
             this.db,
@@ -79,6 +83,7 @@ const FriendshipCtrl = {
         );
         reply.code(res.code).send(res);
     },
+
     async blockUser(request, reply) {
         const { blocked_id } = request.body;
         await FriendshipModel.remove_friend(
@@ -93,8 +98,9 @@ const FriendshipCtrl = {
         );
         reply.code(res.code).send(res);
     },
+
     async unblockUser(request, reply) {
-        const { blocked_id } = request.body;
+        const { blocked_id } = request.params;
         const res = await FriendshipModel.unblock_user(
             this.db,
             request.user.payload.id,
@@ -102,6 +108,7 @@ const FriendshipCtrl = {
         );
         reply.code(res.code).send(res);
     },
+
     async getBlockStatus(request, reply) {
         const blocker_id = request.user.payload.id;
         const blocked_id = request.params.id;

@@ -157,42 +157,44 @@ const UserModel = {
         }
     },
 
-    async user_update(db, user_id, name, email, password, avatar) {
+    async user_update_profile(db, user_id, { name, avatar }) {
         try {
-            const hashedPassword = await bcrypt.hash(password, 10);
-            const stmt = db.prepare(`
-                UPDATE users
-                SET name = ?, email = ?, password = ?, avatar = ?
-                WHERE id = ?
-            `);
-            const result = await stmt.run(
-                name,
-                email,
-                hashedPassword,
-                avatar,
-                user_id,
-            );
-            if (result.changes === 0) {
-                return {
-                    success: false,
-                    code: 400,
-                    result: "user update failed",
-                };
+            // Build the query dynamically based on provided fields
+            const fields = [];
+            const values = [];
+            if (name) {
+                fields.push("name = ?");
+                values.push(name);
+            }
+            if (avatar) {
+                fields.push("avatar = ?");
+                values.push(avatar);
             }
 
-            return {
-                success: true,
-                code: 200,
-                result: result.changes,
-            };
+            if (fields.length === 0) {
+                return { success: false, code: 400, result: "No fields to update." };
+            }
+
+            const stmt = db.prepare(`
+                UPDATE users
+                SET ${fields.join(", ")}
+                WHERE id = ?
+            `);
+            const result = await stmt.run(...values, user_id);
+
+            if (result.changes === 0) {
+                return { success: false, code: 404, result: "User not found or no changes made." };
+            }
+
+            return { success: true, code: 200, result: "Profile updated successfully." };
         } catch (err) {
-            return {
-                success: false,
-                code: 500,
-                result: err.message,
-            };
+             if (err.code === "SQLITE_CONSTRAINT_UNIQUE") {
+                return { success: false, code: 409, result: "That name is already taken." };
+            }
+            return { success: false, code: 500, result: err.message };
         }
     },
+
 
     async user_add_win(db, user_id) {
         try {

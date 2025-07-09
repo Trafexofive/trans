@@ -3,10 +3,12 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import ProfileMenu from './ProfileMenu';
-import FriendRequestsMenu from './FriendRequestsMenu'; // <-- NEW
+import FriendRequestsMenu from './FriendRequestsMenu';
+import { useAuth } from '@/app/contexts/AuthContext'; // Import useAuth
 
 export default function AppNavbar() {
   const pathname = usePathname();
+  const { updateCounter } = useAuth(); // Consume the updateCounter
 
   const getNavLinkClass = (href: string) => {
     return pathname.startsWith(href) ? 'nav-link-active' : 'nav-link';
@@ -24,8 +26,9 @@ export default function AppNavbar() {
           <Link href="/dashboard" className={getNavLinkClass('/dashboard')}>Dashboard</Link>
         </div>
         <div className="navbar-right flex items-center gap-4">
-            <FriendRequestsMenu /> { }
-            <ProfileMenu />
+            {/* FIX: Add the key prop to force re-render on state change */}
+            <FriendRequestsMenu key={`friend-requests-${updateCounter}`} />
+            <ProfileMenu key={`profile-menu-${updateCounter}`} />
         </div>
       </div>
     </div>

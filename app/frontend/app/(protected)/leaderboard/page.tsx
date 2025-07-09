@@ -17,14 +17,20 @@ export default function LeaderboardPage() {
     useEffect(() => {
         if (!accessToken) return;
         const fetchAllUsers = async () => {
+            setIsLoadingUsers(true);
             try {
                 const response = await fetch(`${API_BASE_URL}/api/users`, {
                     headers: { 'Authorization': `Bearer ${accessToken}` },
                 });
                 const data = await response.json();
-                if (data.success) setUsers(data.result);
+                if (data.success) {
+                    setUsers(data.result);
+                } else {
+                    setUsers([]);
+                }
             } catch (error) {
                 console.error("Failed to fetch users", error);
+                setUsers([]);
             } finally {
                 setIsLoadingUsers(false);
             }
@@ -34,7 +40,9 @@ export default function LeaderboardPage() {
 
     const sortedUsers = useMemo(() => [...users].sort((a, b) => b.wins - a.wins), [users]);
     
-    if (isLoadingUsers || isAuthLoading) return <div className="p-10 text-center text-white">Loading Leaderboard...</div>;
+    if (isLoadingUsers || isAuthLoading) {
+        return <div className="p-10 text-center text-white">Loading Leaderboard...</div>;
+    }
 
     return (
         <div className="page-container">

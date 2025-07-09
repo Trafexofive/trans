@@ -4,8 +4,6 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/app/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 
-interface Friend { id: number; name: string; avatar: string; }
-interface Match { id: number; opponent: { name: string; }; result: 'Win' | 'Loss'; score: string; }
 interface Stats { totalMatches: number; winRate: string; wins: number; losses: number; }
 
 const StatCard = ({ title, value, icon }: { title: string, value: string | number, icon: string }) => (
@@ -19,49 +17,21 @@ const StatCard = ({ title, value, icon }: { title: string, value: string | numbe
 );
 
 export default function DashboardPage() {
-    const { user, accessToken, isLoading: isAuthLoading } = useAuth();
+    const { user, isLoading: isAuthLoading, friends } = useAuth();
     const router = useRouter();
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
-
     const [stats, setStats] = useState<Stats | null>(null);
-    const [friends, setFriends] = useState<Friend[]>([]);
-    const [matches, setMatches] = useState<Match[]>([]);
-    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        if (isAuthLoading || !user || !accessToken) return;
+        if (user) {
+            const totalMatches = user.wins + user.loses;
+            const winRate = totalMatches > 0 ? `${Math.round((user.wins / totalMatches) * 100)}%` : 'N/A';
+            setStats({ totalMatches, winRate, wins: user.wins, losses: user.loses });
+        }
+    }, [user]);
 
-        const totalMatches = user.wins + user.loses;
-        const winRate = totalMatches > 0 ? `${Math.round((user.wins / totalMatches) * 100)}%` : 'N/A';
-        setStats({ totalMatches, winRate, wins: user.wins, losses: user.loses });
-
-        const fetchFriends = async () => {
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/friendships`, {
-                    headers: { 'Authorization': `Bearer ${accessToken}` },
-                });
-                const data = await response.json();
-                if (!response.ok) throw new Error(data.result || 'Failed to fetch friends.');
-                setFriends(data.success ? data.result : []);
-            } catch (err: any) {
-                console.error("Error fetching friends:", err);
-                setError("Could not load friends list.");
-                setFriends([]);
-            }
-        };
-
-        const fetchMatches = async () => {
-            console.warn("Match history fetching is not implemented.");
-            setMatches([]);
-        };
-
-        fetchFriends();
-        fetchMatches();
-
-    }, [user, accessToken, isAuthLoading, API_BASE_URL]);
-
-    if (isAuthLoading || !user) return <div className="p-10 text-center text-white">Loading Dashboard...</div>;
-    if (error) return <div className="p-10 text-center text-red-500">{error}</div>;
+    if (isAuthLoading || !user) {
+        return <div className="p-10 text-center text-white">Loading Dashboard...</div>;
+    }
 
     return (
         <div className="page-container space-y-8">
@@ -84,13 +54,7 @@ export default function DashboardPage() {
                     <div>
                         <h2 className="text-xl font-semibold text-white mb-4">Recent Matches</h2>
                         <div className="bg-[#1a1a1c] p-4 rounded-lg space-y-3 border border-gray-800">
-                            {matches.length > 0 ? matches.map(match => (
-                                <div key={match.id} className="flex justify-between items-center bg-[#29282b] p-3 rounded">
-                                    <p className="text-gray-300">vs <span className="font-semibold text-white">{match.opponent.name}</span></p>
-                                    <p className={`font-bold ${match.result === 'Win' ? 'text-green-400' : 'text-red-400'}`}>{match.result}</p>
-                                    <p className="font-mono text-gray-400">{match.score}</p>
-                                </div>
-                            )) : <p className="text-gray-400 text-center py-4">No recent matches played.</p>}
+                            <p className="text-gray-400 text-center py-4">No recent matches played.</p>
                         </div>
                     </div>
                 </div>

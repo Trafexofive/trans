@@ -10,7 +10,6 @@ import {
     useRef,
     useState,
 } from "react";
-
 import { jwtDecode } from "jwt-decode";
 
 // --- Interfaces ---
@@ -22,13 +21,11 @@ interface User {
     wins: number;
     loses: number;
 }
-
 interface DecodedToken {
     payload: User;
     iat: number;
     exp: number;
 }
-
 interface ChatMessage {
     id: number;
     from: number;
@@ -36,41 +33,41 @@ interface ChatMessage {
     content: string;
     timestamp: string;
 }
-
 export interface FriendRequest {
     id: number;
     sender_id: number;
     sender_name: string;
     sender_avatar: string;
 }
-
 export interface FriendRequestStatus {
     sent: { receiver_id: number; id: number }[];
     received: { sender_id: number; id: number }[];
 }
-
 export interface ChatPartner {
     id: number;
     name: string;
     avatar: string;
 }
+export interface Friend {
+    id: number;
+    name: string;
+    avatar: string;
+}
 
+// --- Context Type Definition ---
 interface AuthContextType {
     user: User | null;
     accessToken: string | null;
     isAuthenticated: boolean;
     isLoading: boolean;
-    login: (email: string, password: string) => Promise<void>;
-    logout: () => void;
-    // Centralized State and Actions
-    chats: Map<number, ChatMessage[]>;
-    chatPartners: ChatPartner[];
+    friends: Friend[];
     friendIds: Set<number>;
     pendingRequests: FriendRequest[];
     requestStatuses: FriendRequestStatus;
-    unreadFrom: Set<number>;
-    sendChatMessage: (to: number, content: string) => void;
-    loadChatHistory: (partnerId: number) => Promise<void>;
+    chatPartners: ChatPartner[];
+    login: (email: string, password: string) => Promise<void>;
+    logout: () => void;
+    refreshUserData: () => Promise<void>;
     friendAction: (
         targetUserId: number,
         action:
@@ -83,6 +80,10 @@ interface AuthContextType {
             | "unblock",
         requestId?: number,
     ) => Promise<void>;
+    chats: Map<number, ChatMessage[]>;
+    unreadFrom: Set<number>;
+    sendChatMessage: (to: number, content: string) => void;
+    loadChatHistory: (partnerId: number) => Promise<void>;
     clearUnreadMessages: (partnerId: number) => void;
     fetchFriendData: () => Promise<void>;
 }
@@ -98,22 +99,37 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
     const [accessToken, setAccessToken] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [chats, setChats] = useState<Map<number, ChatMessage[]>>(new Map());
+    const [friends, setFriends] = useState<Friend[]>([]);
     const [friendIds, setFriendIds] = useState<Set<number>>(new Set());
     const [pendingRequests, setPendingRequests] = useState<FriendRequest[]>([]);
     const [requestStatuses, setRequestStatuses] = useState<FriendRequestStatus>(
         { sent: [], received: [] },
     );
     const [chatPartners, setChatPartners] = useState<ChatPartner[]>([]);
+    const [chats, setChats] = useState<Map<number, ChatMessage[]>>(new Map());
     const [unreadFrom, setUnreadFrom] = useState<Set<number>>(new Set());
     const socketRef = useRef<WebSocket | null>(null);
     const activeChatPartnerId = useRef<number | null>(null);
+
+    const logout = useCallback(() => {
+        setUser(null);
+        setAccessToken(null);
+        setFriends([]);
+        setFriendIds(new Set());
+        setPendingRequests([]);
+        setRequestStatuses({ sent: [], received: [] });
+        setChatPartners([]);
+        setChats(new Map());
+        setUnreadFrom(new Set());
+        if (socketRef.current) socketRef.current.close();
+        localStorage.clear();
+    }, []);
 
     const fetchFriendData = useCallback(async (token: string) => {
         try {
             const [friendsRes, requestsRes, statusesRes, partnersRes] =
                 await Promise.all([
-                    fetch(`${API_BASE_URL}/api/friendships/ids`, {
+                    fetch(`${API_BASE_URL}/api/friendships`, {
                         headers: { "Authorization": `Bearer ${token}` },
                     }),
                     fetch(`${API_BASE_URL}/api/friendships/requests`, {
@@ -134,104 +150,120 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     partnersRes.json(),
                 ]);
 
-            if (friendsData.success) setFriendIds(new Set(friendsData.result));
-            if (requestsData.success) setPendingRequests(requestsData.result);
-            if (statusesData.success) setRequestStatuses(statusesData.result);
-            if (partnersData.success) setChatPartners(partnersData.result);
+            setFriends(friendsData.success ? friendsData.result : []);
+            setFriendIds(
+                friendsData.success
+                    ? new Set(friendsData.result.map((f: Friend) => f.id))
+                    : new Set(),
+            );
+            setPendingRequests(requestsData.success ? requestsData.result : []);
+            setRequestStatuses(
+                statusesData.success
+                    ? statusesData.result
+                    : { sent: [], received: [] },
+            );
+            setChatPartners(partnersData.success ? partnersData.result : []);
         } catch (error) {
             console.error("Failed to fetch social data", error);
+            logout();
         }
-    }, []);
+    }, [logout]);
 
-    const friendAction = useCallback(
-        async (
-            targetUserId: number,
-            action:
-                | "invite"
-                | "remove"
-                | "accept"
-                | "decline"
-                | "cancel"
-                | "block"
-                | "unblock",
-            requestId?: number,
-        ) => {
-            if (!accessToken) return;
-            let url = `${API_BASE_URL}/api/friendships`;
-            let method = "POST";
-            const body = JSON.stringify({
-                receiver_id: targetUserId,
-                friend_id: targetUserId,
-                blocked_id: targetUserId,
+    const friendAction = useCallback(async (
+        targetUserId: number,
+        action: any,
+        requestId?: number,
+    ) => {
+        if (!accessToken) return;
+        let url = `${API_BASE_URL}/api/friendships`;
+        let method = "POST";
+        const headers: HeadersInit = {
+            "Authorization": `Bearer ${accessToken}`,
+        };
+        let body: string | undefined = undefined;
+
+        switch (action) {
+            case "invite":
+                url += "/requests";
+                body = JSON.stringify({ receiver_id: targetUserId });
+                break;
+            case "remove":
+                method = "DELETE";
+                url += `/${targetUserId}`;
+                break;
+            case "accept":
+                url += `/requests/${requestId}/accept`;
+                body = JSON.stringify({});
+                break;
+            case "decline":
+                method = "DELETE";
+                url += `/requests/${requestId}/decline`;
+                break;
+            case "cancel":
+                method = "DELETE";
+                url += `/requests/${requestId}/cancel`;
+                break;
+            case "block":
+                url += "/block";
+                body = JSON.stringify({ blocked_id: targetUserId });
+                break;
+            case "unblock":
+                method = "DELETE";
+                url += `/block/${targetUserId}`;
+                break;
+        }
+
+        if (body) headers["Content-Type"] = "application/json";
+
+        try {
+            const response = await fetch(url, { method, headers, body });
+            if (!response.ok) throw new Error("Action failed");
+            await fetchFriendData(accessToken);
+        } catch (error) {
+            console.error(`Friend action '${action}' failed:`, error);
+        }
+    }, [accessToken, fetchFriendData]);
+
+    const refreshUserData = useCallback(async () => {
+        const token = localStorage.getItem("accessToken");
+        if (!token) {
+            logout();
+            return;
+        }
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/users/me`, {
+                headers: { "Authorization": `Bearer ${token}` },
             });
-
-            switch (action) {
-                case "invite":
-                    url += "/requests";
-                    break;
-                case "remove":
-                    method = "DELETE";
-                    break;
-                case "accept":
-                    url += `/requests/${requestId}/accept`;
-                    break;
-                case "decline":
-                    url += `/requests/${requestId}/decline`;
-                    method = "DELETE";
-                    break;
-                case "cancel":
-                    url += `/requests/${requestId}/cancel`;
-                    method = "DELETE";
-                    break;
-                case "block":
-                    url += "/block";
-                    break;
-                case "unblock":
-                    url += "/block";
-                    method = "DELETE";
-                    break;
-            }
-            try {
-                const response = await fetch(url, {
-                    method,
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${accessToken}`,
-                    },
-                    body,
-                });
-                if (!response.ok) throw new Error("Action failed");
-                await fetchFriendData(accessToken);
-            } catch (error) {
-                console.error(`Friend action '${action}' failed:`, error);
-            }
-        },
-        [accessToken, fetchFriendData],
-    );
+            const data = await response.json();
+            if (data.success) setUser(data.result);
+            else logout();
+        } catch (error) {
+            console.error("Could not refresh user data", error);
+            logout();
+        }
+    }, [logout]);
 
     useEffect(() => {
-        const storedToken = localStorage.getItem("accessToken");
-        if (storedToken) {
+        const token = localStorage.getItem("accessToken");
+        if (token) {
             try {
-                const decoded = jwtDecode<DecodedToken>(storedToken);
+                const decoded = jwtDecode<DecodedToken>(token);
                 if (new Date(decoded.exp * 1000) > new Date()) {
-                    setAccessToken(storedToken);
+                    setAccessToken(token);
                     setUser(decoded.payload);
-                } else localStorage.clear();
-            } catch (error) {
-                localStorage.clear();
+                } else logout();
+            } catch (e) {
+                logout();
             }
         }
         setIsLoading(false);
-    }, []);
+    }, [logout]);
 
     const userId = user?.id;
     useEffect(() => {
         if (accessToken && userId) {
             fetchFriendData(accessToken);
-
             if (socketRef.current) socketRef.current.close();
-
             const WS_URL = API_BASE_URL.replace(/^http/, "ws");
             const socket = new WebSocket(
                 `${WS_URL}/api/chat/socket?token=${accessToken}`,
@@ -242,25 +274,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 const partnerId = message.from === userId
                     ? message.to
                     : message.from;
-
-                setChats((prevChats) => {
-                    const newChats = new Map(prevChats);
-                    const currentMessages = newChats.get(partnerId) || [];
-                    if (!currentMessages.some((m) => m.id === message.id)) {
-                        newChats.set(partnerId, [...currentMessages, message]);
-                    }
-                    return newChats;
-                });
-
+                setChats((prev) =>
+                    new Map(prev).set(partnerId, [
+                        ...(prev.get(partnerId) || []),
+                        message,
+                    ])
+                );
                 if (message.from !== activeChatPartnerId.current) {
                     setUnreadFrom((prev) => new Set(prev).add(message.from));
                 }
             };
             return () => socket.close();
         }
-    }, [accessToken, fetchFriendData, userId]);
+    }, [accessToken, userId, fetchFriendData]);
 
-    const login = useCallback(async (email: string, password: string) => {
+    const login = useCallback(async (email, password) => {
         const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -270,7 +298,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (!response.ok || !data.success) {
             throw new Error(data.result || "Authentication failed.");
         }
-
         const { access_token, refresh_token } = data.result;
         localStorage.setItem("accessToken", access_token);
         localStorage.setItem("refreshToken", refresh_token);
@@ -279,39 +306,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUser(decoded.payload);
     }, []);
 
-    const logout = useCallback(() => {
-        setUser(null);
-        setAccessToken(null);
-        setChats(new Map());
-        setFriendIds(new Set());
-        setPendingRequests([]);
-        setRequestStatuses({ sent: [], received: [] });
-        setChatPartners([]);
-        if (socketRef.current) socketRef.current.close();
-        localStorage.clear();
-    }, []);
-
     const loadChatHistory = useCallback(async (partnerId: number) => {
-        if (!accessToken || chats.has(partnerId)) return;
-
-        const response = await fetch(`${API_BASE_URL}/api/chat/${partnerId}`, {
-            headers: { "Authorization": `Bearer ${accessToken}` },
-        });
-        const data = await response.json();
-        if (data.success && Array.isArray(data.result)) {
-            setChats((prevChats) => {
-                const newChats = new Map(prevChats);
-                const sortedHistory = data.result.sort((
-                    a: ChatMessage,
-                    b: ChatMessage,
-                ) => new Date(a.timestamp).getTime() -
-                    new Date(b.timestamp).getTime()
+        if (!accessToken) return;
+        try {
+            const response = await fetch(
+                `${API_BASE_URL}/api/chat/${partnerId}`,
+                { headers: { "Authorization": `Bearer ${accessToken}` } },
+            );
+            const data = await response.json();
+            if (data.success && Array.isArray(data.result)) {
+                setChats((prev) =>
+                    new Map(prev).set(
+                        partnerId,
+                        data.result.sort((a: ChatMessage, b: ChatMessage) =>
+                            new Date(a.timestamp).getTime() -
+                            new Date(b.timestamp).getTime()
+                        ),
+                    )
                 );
-                newChats.set(partnerId, sortedHistory);
-                return newChats;
-            });
+            }
+        } catch (error) {
+            console.error("Failed to load chat history:", error);
         }
-    }, [accessToken, chats]);
+    }, [accessToken]);
 
     const sendChatMessage = useCallback((to: number, content: string) => {
         if (socketRef.current?.readyState === WebSocket.OPEN) {
@@ -328,48 +345,47 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         activeChatPartnerId.current = partnerId;
     }, []);
 
-    const memoizedFetchFriendData = useCallback(() => {
-        if (accessToken) {
-            return fetchFriendData(accessToken);
-        }
-        return Promise.resolve();
-    }, [accessToken, fetchFriendData]);
-
     const value = useMemo(() => ({
         user,
         accessToken,
         isAuthenticated: !!accessToken,
         isLoading,
-        login,
-        logout,
-        chats,
-        chatPartners,
-        sendChatMessage,
-        loadChatHistory,
+        friends,
         friendIds,
         pendingRequests,
         requestStatuses,
-        friendAction,
+        chatPartners,
+        chats,
         unreadFrom,
+        login,
+        logout,
+        refreshUserData,
+        friendAction,
+        loadChatHistory,
+        sendChatMessage,
         clearUnreadMessages,
-        fetchFriendData: memoizedFetchFriendData,
+        fetchFriendData: () => {
+            if (accessToken) fetchFriendData(accessToken);
+        },
     }), [
         user,
         accessToken,
         isLoading,
-        login,
-        logout,
-        chats,
-        chatPartners,
-        sendChatMessage,
-        loadChatHistory,
+        friends,
         friendIds,
         pendingRequests,
         requestStatuses,
-        friendAction,
+        chatPartners,
+        chats,
         unreadFrom,
+        login,
+        logout,
+        refreshUserData,
+        friendAction,
+        fetchFriendData,
+        loadChatHistory,
+        sendChatMessage,
         clearUnreadMessages,
-        memoizedFetchFriendData,
     ]);
 
     return <AuthContext.Provider value={value}>{children}
@@ -383,4 +399,3 @@ export const useAuth = (): AuthContextType => {
     }
     return context;
 };
-
