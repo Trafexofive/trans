@@ -67,6 +67,7 @@ interface AuthContextType {
     chatPartners: ChatPartner[];
     login: (email: string, password: string) => Promise<void>;
     logout: () => void;
+    handleOauthLogin: (accessToken: string, refreshToken: string) => void;
     refreshUserData: () => Promise<void>;
     friendAction: (
         targetUserId: number,
@@ -243,6 +244,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
     }, [logout]);
 
+    const handleOauthLogin = useCallback(
+        (newAccessToken: string, newRefreshToken: string) => {
+            localStorage.setItem("accessToken", newAccessToken);
+            localStorage.setItem("refreshToken", newRefreshToken);
+            try {
+                const decoded = jwtDecode<DecodedToken>(newAccessToken);
+                setAccessToken(newAccessToken);
+                setUser(decoded.payload);
+            } catch (error) {
+                console.error("Failed to decode OAuth token", error);
+                logout();
+            }
+        },
+        [logout],
+    );
+
     useEffect(() => {
         const token = localStorage.getItem("accessToken");
         if (token) {
@@ -359,6 +376,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         unreadFrom,
         login,
         logout,
+        handleOauthLogin,
         refreshUserData,
         friendAction,
         loadChatHistory,
@@ -380,6 +398,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         unreadFrom,
         login,
         logout,
+        handleOauthLogin,
         refreshUserData,
         friendAction,
         fetchFriendData,

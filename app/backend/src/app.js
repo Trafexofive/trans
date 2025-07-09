@@ -4,9 +4,13 @@ const fastifyWebSocket = require('@fastify/websocket');
 const promClient = require('prom-client');
 require('dotenv').config();
 const axios = require('axios');
+const crypto = require('crypto'); // Needed for random password generation
 
 // --- Module Imports ---
 const initDb = require('./models/models.init');
+const UserModel = require('./models/models.users'); // Import UserModel
+const RefreshTokenModel = require('./models/models.refresh_tokens'); // Import RefreshTokenModel
+const { gen_jwt_token } = require('./utils/utils.security'); // Import JWT generator
 const UserRoutes = require('./routes/routes.users');
 const AuthRoutes =require('./routes/routes.auth');
 const FriendshipRoutes = require('./routes/routes.friendships');
@@ -35,12 +39,15 @@ fastify.register(require('@fastify/cors'), {
 fastify.register(require('@fastify/cookie'));
 
 fastify.register(require('@fastify/session'), {
-  secret: process.env.SESSION_SECRET,
+  secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
   cookie: {
     secure: false // Set to true if you're using HTTPS
   }
 });
 
+// --- OAUTH2 REGISTRATION ---
+// The callbackUri is where Google sends the user BACK to your backend.
+// The startRedirectPath is the URL the frontend will link to, to START the process.
 fastify.register(require('@fastify/oauth2'), {
   name: 'googleOAuth2',
   scope: ['profile', 'email'],
@@ -52,40 +59,73 @@ fastify.register(require('@fastify/oauth2'), {
     auth: require('@fastify/oauth2').GOOGLE_CONFIGURATION
   },
   startRedirectPath: '/login/google',
-  callbackUri: 'http://localhost:3000/login/google/callback'
+  callbackUri: `http://localhost:${process.env.PORT || 3000}/login/google/callback`
 });
 
 
+// ======================================================================================
+// I.A OAUTH2 CALLBACK HANDLER (The Core Logic)
+// ======================================================================================
+
 fastify.get('/login/google/callback', async function (request, reply) {
+  const db = this.db;
   try {
+      // 1. Exchange the authorization code from Google for an access token
       const { token } = await fastify.googleOAuth2.getAccessTokenFromAuthorizationCodeFlow(request);
-      fastify.log.info('Access Token received, fetching user info...');
+      
+      // 2. Use the token to get the user's info from Google
       const userInfoEndpoint = 'https://www.googleapis.com/oauth2/v2/userinfo';
-      const { data: userInfo } = await axios.get(userInfoEndpoint, {
-          headers: {
-              'Authorization': `Bearer ${token.access_token}`
+      const { data: googleUser } = await axios.get(userInfoEndpoint, {
+          headers: { 'Authorization': `Bearer ${token.access_token}` }
+      });
+
+      // 3. Find or Create a user in your local database
+      let user;
+      const existingUser = await UserModel.user_fetch_by_email(db, googleUser.email);
+      
+      if (existingUser.success) {
+          user = existingUser.result;
+          fastify.log.info(`OAuth: Existing user found: ${user.email}`);
+      } else {
+          fastify.log.info(`OAuth: No user found for ${googleUser.email}. Creating new user.`);
+          const randomPassword = crypto.randomBytes(20).toString('hex');
+          const newUser = await UserModel.user_create(
+              db,
+              googleUser.name,
+              googleUser.email,
+              randomPassword, // Satisfy NOT NULL constraint
+              googleUser.picture // Use Google's avatar
+          );
+          if (!newUser.success) {
+              throw new Error('Failed to create a new user during OAuth flow.');
           }
-      });
-      fastify.log.info('Successfully fetched user info:');
-      console.log(userInfo);
-      reply.status(200).send({
-          success: true,
-          code: 200,
-          result: userInfo
-      });
-  }
-  catch (err)
-  {
-      console.log(err)
-      if (err.response)
-      {
-          console.error('Error Response Data:\n', err);
+          const createdUser = await UserModel.user_fetch_by_email(db, googleUser.email);
+          if (!createdUser.success) {
+              throw new Error('Failed to fetch newly created user.');
+          }
+          user = createdUser.result;
       }
-      reply.status(500).send({
-          success: false,
-          code: 500,
-          result: 'An error occurred during authentication.'
-      })
+
+      // 4. Generate your application's own JWTs for the user
+      await RefreshTokenModel.refresh_tokens_delete_by_id(db, user.id);
+      const access_token = gen_jwt_token(this, user, process.env.ACCESS_TOKEN_EXPIRE);
+      const refresh_token = gen_jwt_token(this, user, process.env.REFRESH_TOKEN_EXPIRE);
+      await RefreshTokenModel.refresh_tokens_create(db, user.id, refresh_token);
+
+      // 5. Redirect to a dedicated frontend page with tokens in the URL
+      const frontendCallbackUrl = `http://localhost:${process.env.FRONTEND_HOST_PORT || 8080}/google-callback`;
+      const redirectUrl = new URL(frontendCallbackUrl);
+      redirectUrl.searchParams.append('access_token', access_token);
+      redirectUrl.searchParams.append('refresh_token', refresh_token);
+      
+      reply.redirect(redirectUrl.toString());
+
+  } catch (err) {
+      console.error("OAuth Callback Error:", err);
+      // Redirect to frontend login page with an error message
+      const errorRedirectUrl = new URL(`http://localhost:${process.env.FRONTEND_HOST_PORT || 8080}/login`);
+      errorRedirectUrl.searchParams.append('error', 'oauth_failed');
+      reply.redirect(errorRedirectUrl.toString());
   }
 });
 
@@ -116,7 +156,7 @@ fastify.get('/metrics', async (request, reply) => {
 
 // ======================================================================================
 // III. DATABASE & ROUTE REGISTRATION
-// =================================M=====================================================
+// ======================================================================================
 
 initDb(fastify);
 
