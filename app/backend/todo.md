@@ -1,4 +1,5 @@
 issue a default avatar
 issue a match history , after you implement the game
-remove the commented auth , not now
-implemnet a chat profiles return people whome you spoke with
+
+edit this controller : async UpdateMyProfile(request, reply), model: async user_update_profile(db, user_id, { name, avatar })
+remove this controller : async DeleteUser(request, reply)

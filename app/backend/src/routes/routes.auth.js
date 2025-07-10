@@ -50,7 +50,6 @@ async function AuthRoutes(fastify)
     // get 2fa secret for the session user
     fastify.get('/2fa_get', { onRequest: [fastify.auth] }, AuthCtl.TwofaGet)
     
-    
     // delete 2fa secret for the session user
     fastify.delete('/2fa_delete', { onRequest: [fastify.auth] }, AuthCtl.TwofaDelete)
 

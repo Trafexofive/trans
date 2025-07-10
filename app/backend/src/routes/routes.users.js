@@ -29,9 +29,6 @@ function UserRoutes(fastify, options, done) {
         UserCtrl.getUserMatchHistory,
     );
 
-    // Admin/Protected route
-    fastify.delete("/:id", { onRequest: [fastify.auth] }, UserCtrl.DeleteUser);
-
     done();
 }
 

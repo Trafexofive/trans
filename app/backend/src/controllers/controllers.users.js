@@ -25,6 +25,7 @@ const UserCtrl = {
         if (errors.length !== 0) {
             return reply.status(400).send({
                 success: false,
+                code: 400,
                 result: errors.join(", "),
             });
         }
@@ -48,19 +49,6 @@ const UserCtrl = {
             avatar,
         });
         reply.status(res.code).send(res);
-    },
-
-    async DeleteUser(request, reply) {
-        // Note: UserModel.user_delete is not yet implemented in the model.
-        // This will be a future task. For now, this route is unused.
-        // TODO: Implement user deletion in UserModel.
-        const id = request.params.id;
-        // const res = await UserModel.user_delete(this.db, id);
-        // reply.status(res.code).send(res);
-        reply.status(501).send({
-            success: false,
-            result: "Delete functionality not implemented.",
-        });
     },
 
     async getUserMatchHistory(request, reply) {

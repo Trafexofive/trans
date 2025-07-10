@@ -15,11 +15,11 @@ async function TournamentRoutes(fastify) {
     fastify.get('/:id', {
         onRequest: [fastify.auth]
     }, TournamentCtrl.getTournament);
-    
+
     fastify.post('/:id/join', {
         onRequest: [fastify.auth]
     }, TournamentCtrl.joinTournament);
-    
+
     fastify.post('/:id/start', {
         onRequest: [fastify.auth]
     }, TournamentCtrl.startTournament);

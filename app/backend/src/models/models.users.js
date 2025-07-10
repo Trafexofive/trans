@@ -4,7 +4,7 @@
 // email -> VARCHAR 100
 // password -> VARCHAR 100 (hashed)
 // wins -> INTEGER
-// loses -> INTEGERT
+// loses -> INTEGER
 // avatar -> varchar 300
 // created_at -> TIMESTAMP
 
@@ -49,10 +49,11 @@ const UserModel = {
                 };
             }
 
+            const { password, ...user_no_password } = result;
             return {
                 success: true,
                 code: 200,
-                result: result,
+                result: user_no_password,
             };
         } catch (err) {
             return {
@@ -114,6 +115,7 @@ const UserModel = {
             };
         }
     },
+
     async user_create(
         db,
         name,
@@ -187,8 +189,12 @@ const UserModel = {
             }
 
             return { success: true, code: 200, result: "Profile updated successfully." };
-        } catch (err) {
-             if (err.code === "SQLITE_CONSTRAINT_UNIQUE") {
+
+        }
+        catch (err)
+        {
+            if (err.code === "SQLITE_CONSTRAINT_UNIQUE")
+            {
                 return { success: false, code: 409, result: "That name is already taken." };
             }
             return { success: false, code: 500, result: err.message };
