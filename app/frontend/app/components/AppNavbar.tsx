@@ -1,36 +1,70 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import ProfileMenu from './ProfileMenu';
-import FriendRequestsMenu from './FriendRequestsMenu';
-import { useAuth } from '@/app/contexts/AuthContext'; // Import useAuth
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useAuth } from "@/app/contexts/AuthContext";
+import { Button } from "@/components/ui/Button";
 
 export default function AppNavbar() {
-  const pathname = usePathname();
-  const { updateCounter } = useAuth(); // Consume the updateCounter
+    const pathname = usePathname();
+    const { user, logout } = useAuth();
+    const router = useRouter();
 
-  const getNavLinkClass = (href: string) => {
-    return pathname.startsWith(href) ? 'nav-link-active' : 'nav-link';
-  };
+    const navLinks = [
+        { href: "/dashboard", label: "Dashboard" },
+        { href: "/play", label: "Play" },
+        { href: "/tournaments", label: "Tournaments" },
+        { href: "/chat", label: "Chat" },
+        { href: "/leaderboard", label: "Leaderboard" },
+    ];
 
-  return (
-    <div className="navbar-gradient">
-      <div className="navbar solid-effect">
-        <Link href="/dashboard" className="logo">Pong Transcendence</Link>
-        <div className="nav-links">
-          <Link href="/play" className={getNavLinkClass('/play')}>Play</Link>
-          <Link href="/tournaments" className={getNavLinkClass('/tournaments')}>Tournaments</Link>
-          <Link href="/chat" className={getNavLinkClass('/chat')}>Chat</Link>
-          <Link href="/leaderboard" className={getNavLinkClass('/leaderboard')}>Leaderboard</Link>
-          <Link href="/dashboard" className={getNavLinkClass('/dashboard')}>Dashboard</Link>
-        </div>
-        <div className="navbar-right flex items-center gap-4">
-            {/* FIX: Add the key prop to force re-render on state change */}
-            <FriendRequestsMenu key={`friend-requests-${updateCounter}`} />
-            <ProfileMenu key={`profile-menu-${updateCounter}`} />
-        </div>
-      </div>
-    </div>
-  );
+    const handleLogout = () => {
+        logout();
+        router.push("/login");
+    };
+
+    return (
+        <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+            <div className="container flex h-14 max-w-screen-2xl items-center">
+                <nav className="flex items-center space-x-6 text-sm font-medium">
+                    <Link
+                        href="/dashboard"
+                        className="mr-6 flex items-center space-x-2"
+                    >
+                        <span className="font-bold">Transcendence</span>
+                    </Link>
+                    {navLinks.map((link) => (
+                        <Link
+                            key={link.href}
+                            href={link.href}
+                            className={`transition-colors hover:text-foreground/80 ${
+                                pathname === link.href
+                                    ? "text-foreground"
+                                    : "text-foreground/60"
+                            }`}
+                        >
+                            {link.label}
+                        </Link>
+                    ))}
+                </nav>
+                <div className="flex flex-1 items-center justify-end space-x-4">
+                    {user && (
+                        <Link
+                            href={`/profile/${user.id}`}
+                            className="font-medium text-foreground/80 hover:text-foreground"
+                        >
+                            {user.name}
+                        </Link>
+                    )}
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={handleLogout}
+                    >
+                        Logout
+                    </Button>
+                </div>
+            </div>
+        </header>
+    );
 }

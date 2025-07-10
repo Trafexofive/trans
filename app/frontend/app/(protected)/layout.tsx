@@ -1,16 +1,5 @@
-'use client';
-
-import AuthGuard from '../components/AuthGuard';
-import AppNavbar from '../components/AppNavbar';
-
-/**
- * ProtectedLayout: The wrapper for all pages that require authentication.
- * - It uses the <AuthGuard> component to shield its children, redirecting
- *   unauthenticated users to the login page.
- * - It renders the main application navbar (<AppNavbar>), making it consistent
- *   across all authenticated sections of the app.
- * - The main content of each page is rendered as {children}.
- */
+import AuthGuard from "../components/AuthGuard";
+import AppNavbar from "../components/AppNavbar";
 
 export default function ProtectedLayout({
   children,
@@ -19,9 +8,9 @@ export default function ProtectedLayout({
 }) {
   return (
     <AuthGuard>
-      <div className="app-container">
+      <div className="relative flex min-h-screen flex-col bg-background">
         <AppNavbar />
-        <main className="layout-content">
+        <main className="flex-1 container mx-auto max-w-7xl py-6">
           {children}
         </main>
       </div>
