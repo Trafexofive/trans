@@ -158,7 +158,7 @@ const UserModel = {
         }
     },
 
-    async user_update_profile(db, user_id, { name, avatar }) {
+    async user_update_profile(db, user_id, { name, email, password, avatar }) {
         try {
             // Build the query dynamically based on provided fields
             const fields = [];
@@ -171,7 +171,14 @@ const UserModel = {
                 fields.push("avatar = ?");
                 values.push(avatar);
             }
-
+            if (email) {
+                fields.push("email = ?");
+                values.push(email);
+            }
+            if (password) {
+                fields.push("password = ?");
+                values.push(password);
+            }
             if (fields.length === 0) {
                 return { success: false, code: 400, result: "No fields to update." };
             }
@@ -194,7 +201,7 @@ const UserModel = {
         {
             if (err.code === "SQLITE_CONSTRAINT_UNIQUE")
             {
-                return { success: false, code: 409, result: "That name is already taken." };
+                return { success: false, code: 409, result: "name or email already taken" };
             }
             return { success: false, code: 500, result: err.message };
         }

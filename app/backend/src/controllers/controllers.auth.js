@@ -14,6 +14,10 @@ const AuthCtl = {
     {
         // ------------validate password:
         const { email, password } = request.body
+
+
+
+
         const res = await UserModel.user_fetch_by_email(this.db, email)
         
         if (res.success === false)
@@ -94,6 +98,7 @@ const AuthCtl = {
         const { refresh_token } = request.body;
         // No need to verify the JWT here. If the token is invalid, the delete will just fail.
         const res = await RefreshtokenModel.refresh_tokens_delete_by_token(this.db, refresh_token);
+        
         reply.status(res.code).send(res);
     },
 
@@ -187,19 +192,19 @@ const AuthCtl = {
     },
 
     async Login2faVerify(request, reply) {
-        // The user payload here comes from the 'pre_auth_token'
-        const user = request.user.payload;
-        const { token: two_fa_token } = request.body;
+        const user = request.user.payload
+        // 6 numbers token
+        const { two_fa_token } = request.body
 
-        // First, double-check this is a pre-auth token
+        // First, double-check this is a pre-auth token in auth header
         if (!user.pre_auth) {
-            return reply.status(401).send({ success: false, result: "Invalid token type." });
+            return reply.status(401).send({ success: false, code: 401, result: "Invalid token type" })
         }
 
         // Now, verify the 2FA code, just like in TwofaVerify
-        const twoFaResult = await TwofaModel.two_fa_get_by_id(this.db, user.id);
+        const twoFaResult = await TwofaModel.two_fa_get_by_id(this.db, user.id)
         if (!twoFaResult.success) {
-            return reply.status(401).send({ success: false, result: "2FA is not set up correctly." });
+            return reply.status(401).send({ success: false, code: 401, result: "2FA is not set up correctly" })
         }
 
         const verified = speakeasy.totp.verify({
@@ -212,7 +217,6 @@ const AuthCtl = {
         if (verified) {
             // 2FA code is correct! Now we can complete the login.
             // Generate the FINAL access and refresh tokens.
-            await RefreshtokenModel.refresh_tokens_delete_by_id(this.db, user.id);
             const access_token = gen_jwt_token(this, user, process.env.ACCESS_TOKEN_EXPIRE);
             const refresh_token = gen_jwt_token(this, user, process.env.REFRESH_TOKEN_EXPIRE);
             await RefreshtokenModel.refresh_tokens_create(this.db, user.id, refresh_token);

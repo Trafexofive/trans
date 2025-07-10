@@ -107,13 +107,12 @@ fastify.get('/login/google/callback', async function (request, reply) {
       }
 
       // 4. Generate your application's own JWTs for the user
-      await RefreshTokenModel.refresh_tokens_delete_by_id(db, user.id);
       const access_token = gen_jwt_token(this, user, process.env.ACCESS_TOKEN_EXPIRE);
       const refresh_token = gen_jwt_token(this, user, process.env.REFRESH_TOKEN_EXPIRE);
       await RefreshTokenModel.refresh_tokens_create(db, user.id, refresh_token);
 
       // 5. Redirect to a dedicated frontend page with tokens in the URL
-      const frontendCallbackUrl = `http://localhost:${process.env.FRONTEND_HOST_PORT || 8080}/google-callback`;
+      const frontendCallbackUrl = `http://localhost:${process.env.FRONTEND_HOST_PORT || 8080}/google-callback`; //????
       const redirectUrl = new URL(frontendCallbackUrl);
       redirectUrl.searchParams.append('access_token', access_token);
       redirectUrl.searchParams.append('refresh_token', refresh_token);
