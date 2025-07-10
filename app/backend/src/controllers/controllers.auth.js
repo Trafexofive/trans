@@ -32,7 +32,6 @@ const AuthCtl = {
         }
 
         await RefreshtokenModel.refresh_tokens_delete_by_id(this.db, res.result.id);
-
         const access_token = gen_jwt_token(this, res.result, process.env.ACCESS_TOKEN_EXPIRE);
         const refresh_token = gen_jwt_token(this, res.result, process.env.REFRESH_TOKEN_EXPIRE);
         const create_token = await RefreshtokenModel.refresh_tokens_create(this.db, res.result.id, refresh_token);
@@ -51,12 +50,10 @@ const AuthCtl = {
         });
     },
 
-
     async Refresh(request, reply)
     {
         const { refresh_token } = request.body
-        const decoded_token = this.jwt.verify(refresh_token)
-        const user_id = decoded_token.payload.id
+        const user_id = request.auth.payload.id
 
         const res = await RefreshtokenModel.refresh_tokens_check_by_token(this.db, user_id, refresh_token)
 
@@ -75,21 +72,18 @@ const AuthCtl = {
         })
     },
 
+    // changed logout from deleting all refresh tokens to one refresh token
     async Logout(request, reply)
     {
-        const { refresh_token } = request.body
-        const decoded_token = this.jwt.verify(refresh_token)
-        const user_id = decoded_token.payload.id
-        const res = await RefreshtokenModel.refresh_tokens_delete_by_id(this.db, user_id)
-        reply.status(res.code).send(res)
+        const { refresh_token } = request.body;
+        // No need to verify the JWT here. If the token is invalid, the delete will just fail.
+        const res = await RefreshtokenModel.refresh_tokens_delete_by_token(this.db, refresh_token);
+        reply.status(res.code).send(res);
     },
 
     async TwofaCreate(request, reply)
     {
-        const authHeader = request.headers.authorization
-        const token = authHeader.split(' ')[1]
-        const decoded = await request.jwtVerify(token)
-        const payload = decoded.payload
+        const payload = request.auth.payload
 
        const check_exist = await TwofaModel.two_fa_get_by_id(this.db, payload.id)
        if (check_exist.success === true)
@@ -107,7 +101,8 @@ const AuthCtl = {
         }
 
         const secret = speakeasy.generateSecret({
-            name: payload.email,
+            name: payload.name,
+            email: payload.email
         })
 
         const store_secret =  await TwofaModel.two_fa_create(this.db, payload.id, secret)
@@ -125,47 +120,28 @@ const AuthCtl = {
 
     async TwofaGet(request, reply)
     {
-        const authHeader = request.headers.authorization
-        const token = authHeader.split(' ')[1]
-        const decoded = await request.jwtVerify(token)
-        const payload = decoded.payload
-
+        const payload = request.auth.payload
         const res = await TwofaModel.two_fa_get_by_id(this.db, payload.id)
         if (res.success === false)
-        {
             return reply.status(res.code).send(res)
-        }
-
         const qr_code = await qrcode.toDataURL(res.result.otpauth_url)
         reply.status(200).send(qr_code) // wrap this into an img take source in html
     },
 
     async TwofaDelete(request, reply)
     {
-        const authHeader = request.headers.authorization
-        const token = authHeader.split(' ')[1]
-        const decoded = await request.jwtVerify(token)
-        const payload = decoded.payload
-        const id = payload.id
-
-        const res = await TwofaModel.two_fa_delete_by_id(this.db, id)
+        const payload = request.auth.payload
+        const res = await TwofaModel.two_fa_delete_by_id(this.db, payload.id)
         reply.status(res.code).send(res)
     },
 
     async TwofaVerify(request, reply)
     {
-        const authHeader = request.headers.authorization
-        const access_token = authHeader.split(' ')[1]
-        const decoded = await request.jwtVerify(access_token)
-        const payload = decoded.payload
+        const payload = request.auth.payload
         const { token } = request.body
-        const id = payload.id
-    
-        const res = await TwofaModel.two_fa_get_by_id(this.db, id)
+        const res = await TwofaModel.two_fa_get_by_id(this.db, payload.id)
         if (res.success === false)
-        {
             return reply.status(res.code).send(res)
-        }
 
         const verified = speakeasy.totp.verify({
             secret: res.result.ascii,
@@ -176,11 +152,9 @@ const AuthCtl = {
 
         if (verified)
         {
-            const update = await TwofaModel.two_fa_verify_by_id(this.db, id)
+            const update = await TwofaModel.two_fa_verify_by_id(this.db, payload.id)
             if (update.success === false)
-            {
                 return reply.status(update.code).send(update)
-            }
 
             return reply.status(200).send({
                 success: true,

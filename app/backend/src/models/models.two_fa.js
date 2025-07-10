@@ -22,12 +22,12 @@ const TwofaModel = {
     {
         return `CREATE TABLE IF NOT EXISTS two_fa (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL UNIQUE,
                 ascii VARCHAR NOT NULL,
                 hex VARCHAR NOT NULL,
                 base32 VARCHAR NOT NULL,
-                otpauth_url UNIQUE NOT NULL,
-                verified INTEGER NOT NULL,
+                otpauth_url NOT NULL,
+                verified BOOLEAN NOT NULL DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             );`

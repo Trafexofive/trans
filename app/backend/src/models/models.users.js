@@ -32,7 +32,7 @@ const UserModel = {
         return `CREATE INDEX IF NOT EXISTS idx_users_name ON users (name);`;
     },
 
-    async user_fetch_by_email(db, email) // never link this to a route
+    async user_fetch_by_email(db, email)
     {
         try {
             const stmt = db.prepare(`
@@ -49,11 +49,10 @@ const UserModel = {
                 };
             }
 
-            const { password, ...user_no_password } = result;
             return {
                 success: true,
                 code: 200,
-                result: user_no_password,
+                result: result,
             };
         } catch (err) {
             return {
@@ -208,9 +207,9 @@ const UserModel = {
                 `UPDATE users SET wins = wins + 1 WHERE id = ?`,
             );
             await stmt.run(user_id);
-            return { success: true };
+            return { success: true, code: 200, result: "win added" };
         } catch (err) {
-            return { success: false, result: err.message };
+            return { success: false, code: 500, result: err.message };
         }
     },
 
@@ -220,9 +219,9 @@ const UserModel = {
                 `UPDATE users SET loses = loses + 1 WHERE id = ?`,
             );
             await stmt.run(user_id);
-            return { success: true };
+            return { success: true, code: 200, result: "lose added" };
         } catch (err) {
-            return { success: false, result: err.message };
+            return { success: false, code: 500, result: err.message };
         }
     },
 
