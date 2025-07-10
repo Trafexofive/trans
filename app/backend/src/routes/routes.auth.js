@@ -67,6 +67,19 @@ async function AuthRoutes(fastify)
 
     }, AuthCtl.TwofaVerify)
 
+    fastify.post('/login/verify-2fa', {
+        onRequest: [fastify.auth], // This validates the pre_auth_token
+        schema: {
+            body: {
+                type: 'object',
+                required: ['token'],
+                properties: {
+                    token: { type: 'string' }
+                }
+            }
+        }
+    }, AuthCtl.Login2faVerify);
+
 }
 
 module.exports = AuthRoutes

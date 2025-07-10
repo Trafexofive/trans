@@ -12,6 +12,7 @@ const AuthCtl = {
 
     async Login (request, reply)
     {
+        // ------------validate password:
         const { email, password } = request.body
         const res = await UserModel.user_fetch_by_email(this.db, email)
         
@@ -19,9 +20,8 @@ const AuthCtl = {
         {
             return reply.status(401).send({ success: false, code: 401, result: "Invalid email or password." });
         }
-
-        const is_valid = await bcrypt.compare(password, res.result.password)
-
+        const user = res.result
+        const is_valid = await bcrypt.compare(password, user.password)
         if (is_valid === false)
         {
             return reply.status(401).send({
@@ -30,8 +30,24 @@ const AuthCtl = {
                 result: "Invalid email or password."
             });
         }
+        //----------------------------------
 
-        await RefreshtokenModel.refresh_tokens_delete_by_id(this.db, res.result.id);
+        //------- check if 2fa is activated:
+        const check_two_fa = await TwofaModel.two_fa_get_by_id(this.db, user.id)
+        if (check_two_fa.success && check_two_fa.result.verified)
+        {
+            const preAuthTokenPayload = { id: user.id, name: user.name, email: user.email, pre_auth: true };
+            const pre_auth_token = gen_jwt_token(this, preAuthTokenPayload, '5m');
+            return reply.status(202).send({
+                success: true,
+                code: 202,
+                result: "2fa token required",
+                pre_auth_token: pre_auth_token
+            })
+        }
+        //---------------------------
+
+        //-----------normal login:
         const access_token = gen_jwt_token(this, res.result, process.env.ACCESS_TOKEN_EXPIRE);
         const refresh_token = gen_jwt_token(this, res.result, process.env.REFRESH_TOKEN_EXPIRE);
         const create_token = await RefreshtokenModel.refresh_tokens_create(this.db, res.result.id, refresh_token);
@@ -48,22 +64,22 @@ const AuthCtl = {
                 refresh_token: refresh_token
             }
         });
+        //-----------------------
     },
 
     async Refresh(request, reply)
     {
         const { refresh_token } = request.body
-        const user_id = request.auth.payload.id
+        const payload = request.user.payload
 
-        const res = await RefreshtokenModel.refresh_tokens_check_by_token(this.db, user_id, refresh_token)
+        const res = await RefreshtokenModel.refresh_tokens_check_by_token(this.db, payload.id, refresh_token)
 
         if (!res.success)
         {
-            reply.status(res.code).send(res)
-            return
+            return reply.status(res.code).send(res)
         }
 
-        const new_access_token = gen_jwt_token(this, decoded_token.payload, process.env.ACCESS_TOKEN_EXPIRE)
+        const new_access_token = gen_jwt_token(this, payload, process.env.ACCESS_TOKEN_EXPIRE)
 
         reply.status(res.code).send({
             success: true,
@@ -83,7 +99,7 @@ const AuthCtl = {
 
     async TwofaCreate(request, reply)
     {
-        const payload = request.auth.payload
+        const payload = request.user.payload
 
        const check_exist = await TwofaModel.two_fa_get_by_id(this.db, payload.id)
        if (check_exist.success === true)
@@ -120,7 +136,7 @@ const AuthCtl = {
 
     async TwofaGet(request, reply)
     {
-        const payload = request.auth.payload
+        const payload = request.user.payload
         const res = await TwofaModel.two_fa_get_by_id(this.db, payload.id)
         if (res.success === false)
             return reply.status(res.code).send(res)
@@ -130,14 +146,14 @@ const AuthCtl = {
 
     async TwofaDelete(request, reply)
     {
-        const payload = request.auth.payload
+        const payload = request.user.payload
         const res = await TwofaModel.two_fa_delete_by_id(this.db, payload.id)
         reply.status(res.code).send(res)
     },
 
     async TwofaVerify(request, reply)
     {
-        const payload = request.auth.payload
+        const payload = request.user.payload
         const { token } = request.body
         const res = await TwofaModel.two_fa_get_by_id(this.db, payload.id)
         if (res.success === false)
@@ -168,6 +184,52 @@ const AuthCtl = {
             code: 400,
             result: "invalid 2FA token"
         })
+    },
+
+    async Login2faVerify(request, reply) {
+        // The user payload here comes from the 'pre_auth_token'
+        const user = request.user.payload;
+        const { token: two_fa_token } = request.body;
+
+        // First, double-check this is a pre-auth token
+        if (!user.pre_auth) {
+            return reply.status(401).send({ success: false, result: "Invalid token type." });
+        }
+
+        // Now, verify the 2FA code, just like in TwofaVerify
+        const twoFaResult = await TwofaModel.two_fa_get_by_id(this.db, user.id);
+        if (!twoFaResult.success) {
+            return reply.status(401).send({ success: false, result: "2FA is not set up correctly." });
+        }
+
+        const verified = speakeasy.totp.verify({
+            secret: twoFaResult.result.ascii,
+            encoding: 'ascii',
+            token: two_fa_token,
+            window: 1,
+        });
+
+        if (verified) {
+            // 2FA code is correct! Now we can complete the login.
+            // Generate the FINAL access and refresh tokens.
+            await RefreshtokenModel.refresh_tokens_delete_by_id(this.db, user.id);
+            const access_token = gen_jwt_token(this, user, process.env.ACCESS_TOKEN_EXPIRE);
+            const refresh_token = gen_jwt_token(this, user, process.env.REFRESH_TOKEN_EXPIRE);
+            await RefreshtokenModel.refresh_tokens_create(this.db, user.id, refresh_token);
+            
+            return reply.status(200).send({
+                success: true,
+                code: 200,
+                result: { access_token, refresh_token }
+            });
+        }
+
+        // If we reach here, the 2FA code was wrong.
+        return reply.status(401).send({
+            success: false,
+            code: 401,
+            result: "Invalid 2FA token"
+        });
     }
 }
 
