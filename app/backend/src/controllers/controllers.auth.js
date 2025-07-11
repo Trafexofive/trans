@@ -224,8 +224,9 @@ const AuthCtl = {
         if (verified) {
             // 2FA code is correct! Now we can complete the login.
             // Generate the FINAL access and refresh tokens.
-            const access_token = gen_jwt_token(this, user, process.env.ACCESS_TOKEN_EXPIRE);
-            const refresh_token = gen_jwt_token(this, user, process.env.REFRESH_TOKEN_EXPIRE);
+            const user_payload = { id: user.id, name: user.name, email: user.email };
+            const access_token = gen_jwt_token(this, user_payload, process.env.ACCESS_TOKEN_EXPIRE);
+            const refresh_token = gen_jwt_token(this, user_payload, process.env.REFRESH_TOKEN_EXPIRE);
             await RefreshtokenModel.refresh_tokens_create(this.db, user.id, refresh_token);
             
             return reply.status(200).send({
