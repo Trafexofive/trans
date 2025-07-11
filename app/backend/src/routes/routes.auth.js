@@ -72,9 +72,9 @@ async function AuthRoutes(fastify)
         schema: {
             body: {
                 type: 'object',
-                required: ['token'],
+                required: ['two_fa_token'],
                 properties: {
-                    token: { type: 'string' }
+                    two_fa_token: { type: 'string' }
                 }
             }
         }
