@@ -51,27 +51,59 @@ function check_password(password)
     }
 }
 
-function check_and_sanitize(data)
+function check_message(message)
 {
+    if (!message || message.trim().length === 0)
+    {
+        return "Message cannot be empty";
+    }
+    if (!validator.isLength(message, { min: 1, max: 1000 }))
+    {
+        return "Message must be between 1 and 1000 characters";
+    }
+}
+
+function check_and_sanitize(data) {
     const errors = [];
-    const sanitized = {};
+    // Start with a shallow copy of all incoming data.
+    const sanitized = { ...data };
 
     if ('name' in data) {
         const err = check_name(data.name);
-        if (err) errors.push(err);
-        else sanitized.name = validator.escape(data.name);
+        if (err) {
+            errors.push(err);
+            delete sanitized.name;
+        } else {
+            sanitized.name = validator.escape(data.name);
+        }
     }
 
     if ('email' in data) {
         const err = check_email(data.email);
-        if (err) errors.push(err);
-        else sanitized.email = validator.normalizeEmail(data.email);
+        if (err) {
+            errors.push(err);
+            delete sanitized.email;
+        } else {
+            sanitized.email = validator.normalizeEmail(data.email);
+        }
     }
 
     if ('password' in data) {
         const err = check_password(data.password);
-        if (err) errors.push(err);
-        else sanitized.password = data.password;
+        if (err) {
+            errors.push(err);
+            delete sanitized.password;
+        }
+    }
+
+    if ('message' in data) {
+        const err = check_message(data.message)
+        if (err) {
+            errors.push(err)
+            delete sanitized.message
+        } else {
+            sanitized.message = validator.escape(data.message)
+        }
     }
 
     return {

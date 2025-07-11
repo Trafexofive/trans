@@ -6,26 +6,33 @@ const bcrypt = require('bcrypt')
 const qrcode = require('qrcode')
 const speakeasy = require('speakeasy')
 const { gen_jwt_token } = require('../utils/utils.security')
+const { check_and_sanitize } = require("../utils/utils.security");
 require('dotenv').config()
 
 const AuthCtl = {
 
     async Login (request, reply)
     {
-        // ------------validate password:
-        const { email, password } = request.body
+        rawUserData = request.body
+        const { errors, sanitized, isValid } = check_and_sanitize(rawUserData);
 
+        if (!isValid)
+        {
+            return reply.status(400).send({
+                success: false,
+                code: 400,
+                result: errors.join(", ")
+            })
+        }
 
-
-
-        const res = await UserModel.user_fetch_by_email(this.db, email)
+        const res = await UserModel.user_fetch_by_email(this.db, sanitized.email)
         
         if (res.success === false)
         {
             return reply.status(401).send({ success: false, code: 401, result: "Invalid email or password." });
         }
         const user = res.result
-        const is_valid = await bcrypt.compare(password, user.password)
+        const is_valid = await bcrypt.compare(sanitized.password, user.password)
         if (is_valid === false)
         {
             return reply.status(401).send({

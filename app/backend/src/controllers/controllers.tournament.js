@@ -2,13 +2,21 @@ const TournamentModel = require('../models/models.tournament');
 const ChatModel = require('../models/models.chat');
 
 const TournamentCtrl = {
-    async createTournament(request, reply) {
-        const { name } = request.body;
-        const creator_id = request.user.payload.id;
-        if (!name || name.trim().length === 0) {
-            return reply.code(400).send({ success: false, result: "Tournament name is required." });
+    async createTournament(request, reply)
+    {
+        rawUserData = request.body
+        const { errors, sanitized, isValid } = check_and_sanitize(rawUserData);
+        if (!isValid)
+        {
+            return reply.status(400).send({
+                success: false,
+                code: 400,
+                result: errors.join(", ")
+            })
         }
-        const res = await TournamentModel.tournament_create(this.db, name, creator_id);
+    
+        const creator_id = request.user.payload.id;
+        const res = await TournamentModel.tournament_create(this.db, sanitized.name, creator_id);
         reply.code(res.code).send(res);
     },
 

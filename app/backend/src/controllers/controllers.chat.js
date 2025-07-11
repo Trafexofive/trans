@@ -31,15 +31,23 @@ const ChatCtl = {
 
             socket.on("message", async (rawMessage) => {
                 try {
-                    const message = JSON.parse(rawMessage.toString());
+                    const message = JSON.parse(rawMessage.toString())
                     if (!message.to || !message.content) return;
 
+                    // check if block exists and return
                     const blockCheck = await FriendshipModel.check_block(
                         this.db,
                         userId,
                         message.to,
                     );
                     if (blockCheck.result) return;
+
+                    // sanitize and validate message against xss
+                    const { sanitized, isValid } = check_and_sanitize({ message: message.content });
+                    if (!isValid) {
+                        socket.send(JSON.stringify({ error: "Invalid message." }));
+                        return;
+                    }
 
                     const recipientSocket = activeConnections.get(message.to);
                     const isDelivered = !!recipientSocket &&
@@ -48,7 +56,7 @@ const ChatCtl = {
                     const savedMessage = await ChatModel.chat_create(this.db, {
                         sender_id: userId,
                         recipient_id: message.to,
-                        message: message.content,
+                        message: sanitized.content,
                         is_delivered: isDelivered ? 1 : 0,
                         delivered_at: isDelivered
                             ? new Date().toISOString()
@@ -88,10 +96,7 @@ const ChatCtl = {
     },
 
     async ChatHistory(request, reply) {
-        const authHeader = request.headers.authorization;
-        const token = authHeader.split(" ")[1];
-        const decoded = await request.jwtVerify(token);
-        const senderId = decoded.payload.id;
+        const senderId = request.user.id;
         const recId = request.params.id;
         const rec_check = await UserModel.user_fetch(this.db, recId);
         if (!rec_check.success) {
@@ -105,15 +110,12 @@ const ChatCtl = {
     },
 
     async ChatProfiles(request, reply) {
-        const authHeader = request.headers.authorization;
-        const token = authHeader.split(" ")[1];
-        const decoded = await request.jwtVerify(token);
         const res = await ChatModel.chat_get_profiles(
             this.db,
-            decoded.payload.id,
+            request.user.id,
         );
         reply.code(res.code).send(res);
-    },
+    }
 };
 
 module.exports = ChatCtl;

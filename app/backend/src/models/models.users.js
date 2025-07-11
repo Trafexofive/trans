@@ -9,6 +9,7 @@
 // created_at -> TIMESTAMP
 
 const bcrypt = require("bcrypt");
+const { hash_password } = require("../utils/utils.security")
 
 const UserModel = {
     users_init() {
@@ -123,38 +124,38 @@ const UserModel = {
         avatar = "/avatars/default.png",
     ) {
         try {
-            const hashedPassword = await bcrypt.hash(password, 10);
+            const hashedPassword = await hash_password(password)
             const stmt = db.prepare(`
                 INSERT
                 INTO users (name, email, password, avatar)
                 VALUES (?, ?, ?, ?)
             `);
-            const result = await stmt.run(name, email, hashedPassword, avatar);
+            const result = await stmt.run(name, email, hashedPassword, avatar)
             if (result.changes === 0) {
                 return {
                     success: false,
                     code: 400,
                     result: "user creation failed",
-                };
+                }
             }
             return {
                 success: true,
                 code: 200,
                 result: result.changes,
-            };
+            }
         } catch (err) {
             if (err.code === "SQLITE_CONSTRAINT_UNIQUE") {
                 return {
                     success: false,
                     code: 409,
                     result: "A user with that name or email already exists.", // More descriptive error
-                };
+                }
             }
             return {
                 success: false,
                 code: 500,
                 result: err.message,
-            };
+            }
         }
     },
 
@@ -177,7 +178,8 @@ const UserModel = {
             }
             if (password) {
                 fields.push("password = ?");
-                values.push(password);
+                hashed_password = await hash_password(password)
+                values.push(hashed_password);
             }
             if (fields.length === 0) {
                 return { success: false, code: 400, result: "No fields to update." };

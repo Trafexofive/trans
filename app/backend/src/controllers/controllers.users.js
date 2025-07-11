@@ -21,7 +21,7 @@ const UserCtrl = {
 
     async CreateUser(request, reply) {
         const rawUserData = request.body;
-        const { errors, sanitized, isValid } = validateAndSanitize(rawUserData);
+        const { errors, sanitized, isValid } = check_and_sanitize(rawUserData);
         
         if (!isValid)
         {
@@ -31,7 +31,6 @@ const UserCtrl = {
                 result: errors.join(", ")
             })
         }
-        
         
         const res = await UserModel.user_create(
             this.db,
@@ -45,24 +44,19 @@ const UserCtrl = {
 
     async UpdateMyProfile(request, reply) {
         const userId = request.user.payload.id;
-        const { name, email, password, avatar } = request.body;
-
-        // input sanitizer
-        const errors = check_and_sanitize({ name, email, password }, "ALL");
-        if (errors.length !== 0) {
+        const rawUserData = request.body;
+        const { errors, sanitized, isValid } = check_and_sanitize(rawUserData);
+        
+        if (!isValid)
+        {
             return reply.status(400).send({
                 success: false,
                 code: 400,
-                result: errors.join(", "),
-            });
+                result: errors.join(", ")
+            })
         }
 
-        const res = await UserModel.user_update_profile(this.db, userId, {
-            name,
-            email,
-            password,
-            avatar,
-        });
+        const res = await UserModel.user_update_profile(this.db, userId, sanitized);
         reply.status(res.code).send(res);
     },
 
