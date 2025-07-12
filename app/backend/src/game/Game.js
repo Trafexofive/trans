@@ -5,10 +5,12 @@ const CANVAS_HEIGHT = 600;
 const BALL_RADIUS = 10;
 
 class Game {
-    constructor(player1, player2, onGameOver) {
+    constructor(player1, player2, onGameOver, matchId) {
         this.player1 = player1;
         this.player2 = player2;
         this.onGameOver = onGameOver;
+        this.matchId = matchId; // Used for spectator lookup.
+        this.spectators = new Set();
         this.isOver = false;
 
         this.ball = {
@@ -18,33 +20,65 @@ class Game {
             dy: 5,
             radius: BALL_RADIUS,
         };
-
         this.paddles = {
             [this.player1.id]: { y: CANVAS_HEIGHT / 2 - PADDLE_HEIGHT / 2 },
             [this.player2.id]: { y: CANVAS_HEIGHT / 2 - PADDLE_HEIGHT / 2 },
         };
-
         this.score = { [this.player1.id]: 0, [this.player2.id]: 0 };
         this.interval = null;
     }
 
+    addSpectator(socket) {
+        this.spectators.add(socket);
+        // Immediately send the current game state to the new spectator.
+        socket.send(JSON.stringify({
+            type: "gameStart",
+            payload: {
+                player1: { id: this.player1.id, name: this.player1.name },
+                player2: { id: this.player2.id, name: this.player2.name },
+                isSpectator: true,
+            },
+        }));
+        socket.send(
+            JSON.stringify({
+                type: "gameState",
+                payload: {
+                    paddles: this.paddles,
+                    ball: this.ball,
+                    score: this.score,
+                },
+            }),
+        );
+    }
+
+    removeSpectator(socket) {
+        this.spectators.delete(socket);
+    }
+
     broadcast(type, payload) {
         const message = JSON.stringify({ type, payload });
-        // Check readyState to prevent errors if a socket closes during broadcast
+        // Send to players.
         if (this.player1.socket.readyState === 1) {
             this.player1.socket.send(message);
         }
         if (this.player2.socket.readyState === 1) {
             this.player2.socket.send(message);
         }
+        // Send to all spectators.
+        this.spectators.forEach((spectatorSocket) => {
+            if (spectatorSocket.readyState === 1) {
+                spectatorSocket.send(message);
+            } else {
+                // Clean up dead spectator connections.
+                this.removeSpectator(spectatorSocket);
+            }
+        });
     }
 
     update() {
-        // Move the ball
         this.ball.x += this.ball.dx;
         this.ball.y += this.ball.dy;
 
-        // Wall collision (top/bottom)
         if (
             this.ball.y + this.ball.radius > CANVAS_HEIGHT ||
             this.ball.y - this.ball.radius < 0
@@ -52,31 +86,25 @@ class Game {
             this.ball.dy *= -1;
         }
 
-        // Paddle positions
         const paddle1Y = this.paddles[this.player1.id].y;
         const paddle2Y = this.paddles[this.player2.id].y;
 
-        // Player 1 paddle collision
         if (
             this.ball.dx < 0 &&
             this.ball.x - this.ball.radius <= PADDLE_WIDTH &&
-            this.ball.y > paddle1Y &&
-            this.ball.y < paddle1Y + PADDLE_HEIGHT
+            this.ball.y > paddle1Y && this.ball.y < paddle1Y + PADDLE_HEIGHT
         ) {
             this.ball.dx *= -1;
         }
 
-        // Player 2 paddle collision
         if (
             this.ball.dx > 0 &&
             this.ball.x + this.ball.radius >= CANVAS_WIDTH - PADDLE_WIDTH &&
-            this.ball.y > paddle2Y &&
-            this.ball.y < paddle2Y + PADDLE_HEIGHT
+            this.ball.y > paddle2Y && this.ball.y < paddle2Y + PADDLE_HEIGHT
         ) {
             this.ball.dx *= -1;
         }
 
-        // Score points
         if (this.ball.x + this.ball.radius < 0) {
             this.score[this.player2.id]++;
             this.resetBall();

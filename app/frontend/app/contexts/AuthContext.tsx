@@ -12,13 +12,14 @@ import {
 } from "react";
 import { jwtDecode } from "jwt-decode";
 import { useRouter } from "next/navigation";
+import { fetchApi } from "@/lib/api";
 
 // Interfaces
 interface User {
     id: number;
     name: string;
     email: string;
-    avatar: string;
+    avatar: string | null;
     wins: number;
     loses: number;
 }
@@ -54,18 +55,20 @@ export interface Friend {
     avatar: string;
 }
 
-// Context Type Definition
-interface AuthContextType {
-    user: User | null;
-    accessToken: string | null;
-    isAuthenticated: boolean;
-    isLoading: boolean;
+interface SocialState {
     friends: Friend[];
     friendIds: Set<number>;
     blockedUserIds: Set<number>;
     pendingRequests: FriendRequest[];
     requestStatuses: FriendRequestStatus;
     chatPartners: ChatPartner[];
+}
+
+interface AuthContextType extends SocialState {
+    user: User | null;
+    accessToken: string | null;
+    isAuthenticated: boolean;
+    isLoading: boolean;
     login: (email: string, password: string) => Promise<void>;
     logout: () => void;
     handleOauthLogin: (accessToken: string, refreshToken: string) => void;
@@ -85,20 +88,22 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
+const initialSocialState: SocialState = {
+    friends: [],
+    friendIds: new Set(),
+    blockedUserIds: new Set(),
+    pendingRequests: [],
+    requestStatuses: { sent: [], received: [] },
+    chatPartners: [],
+};
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
     const [accessToken, setAccessToken] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [friends, setFriends] = useState<Friend[]>([]);
-    const [friendIds, setFriendIds] = useState<Set<number>>(new Set());
-    const [blockedUserIds, setBlockedUserIds] = useState<Set<number>>(
-        new Set(),
-    ); // <<< NEW
-    const [pendingRequests, setPendingRequests] = useState<FriendRequest[]>([]);
-    const [requestStatuses, setRequestStatuses] = useState<FriendRequestStatus>(
-        { sent: [], received: [] },
+    const [socialState, setSocialState] = useState<SocialState>(
+        initialSocialState,
     );
-    const [chatPartners, setChatPartners] = useState<ChatPartner[]>([]);
     const [chats, setChats] = useState<Map<number, ChatMessage[]>>(new Map());
     const [unreadFrom, setUnreadFrom] = useState<Set<number>>(new Set());
     const socketRef = useRef<WebSocket | null>(null);
@@ -108,12 +113,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const logout = useCallback(() => {
         setUser(null);
         setAccessToken(null);
-        setFriends([]);
-        setFriendIds(new Set());
-        setBlockedUserIds(new Set()); 
-        setPendingRequests([]);
-        setRequestStatuses({ sent: [], received: [] });
-        setChatPartners([]);
+        setSocialState(initialSocialState);
         setChats(new Map());
         setUnreadFrom(new Set());
         if (socketRef.current) socketRef.current.close();
@@ -124,54 +124,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const fetchSocialData = useCallback(async (token: string) => {
         if (!API_BASE_URL) return;
         try {
-            const [friendsRes, reqsRes, statusesRes, partnersRes, blockedRes] = 
-                await Promise.all([
-                    fetch(`${API_BASE_URL}/api/friendships`, {
-                        headers: { "Authorization": `Bearer ${token}` },
-                    }),
-                    fetch(`${API_BASE_URL}/api/friendships/requests`, {
-                        headers: { "Authorization": `Bearer ${token}` },
-                    }),
-                    fetch(`${API_BASE_URL}/api/friendships/requests/statuses`, {
-                        headers: { "Authorization": `Bearer ${token}` },
-                    }),
-                    fetch(`${API_BASE_URL}/api/chat/`, {
-                        headers: { "Authorization": `Bearer ${token}` },
-                    }),
-                    fetch(`${API_BASE_URL}/api/friendships/blocked`, {
-                        headers: { "Authorization": `Bearer ${token}` },
-                    }), 
-                ]);
-            const [
-                friendsData,
-                reqsData,
-                statusesData,
-                partnersData,
-                blockedData,
-            ] = 
-                await Promise.all([
-                    friendsRes.json(),
-                    reqsRes.json(),
-                    statusesRes.json(),
-                    partnersRes.json(),
-                    blockedRes.json(), 
-                ]);
-            setFriends(friendsData.success ? friendsData.result : []);
-            setFriendIds(
-                friendsData.success
-                    ? new Set(friendsData.result.map((f: Friend) => f.id))
-                    : new Set(),
+            const { result } = await fetchApi(
+                `${API_BASE_URL}/api/users/me/social-data`,
+                { token },
             );
-            setPendingRequests(reqsData.success ? reqsData.result : []);
-            setRequestStatuses(
-                statusesData.success
-                    ? statusesData.result
-                    : { sent: [], received: [] },
-            );
-            setChatPartners(partnersData.success ? partnersData.result : []);
-            setBlockedUserIds(
-                blockedData.success ? new Set(blockedData.result) : new Set(),
-            ); 
+            setSocialState({
+                friends: result.friends || [],
+                friendIds: new Set(
+                    result.friends?.map((f: Friend) => f.id) || [],
+                ),
+                blockedUserIds: new Set(result.blockedUserIds || []),
+                pendingRequests: result.pendingRequests || [],
+                requestStatuses: result.requestStatuses ||
+                    { sent: [], received: [] },
+                chatPartners: result.chatPartners || [],
+            });
         } catch (error) {
             console.error("Failed to fetch social data", error);
             logout();
@@ -213,27 +180,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     needsBody = true;
                     break;
             }
-
-            const fetchOptions: RequestInit = {
-                method,
-                headers: { "Authorization": `Bearer ${accessToken}` },
-            };
-            if (needsBody) {
-                fetchOptions.headers = {
-                    ...fetchOptions.headers,
-                    "Content-Type": "application/json",
-                };
-                fetchOptions.body = JSON.stringify(body);
-            }
-
             try {
-                const response = await fetch(url, fetchOptions);
-                if (!response.ok) {
-                    throw new Error(
-                        (await response.json()).result ||
-                            `Action ${action} failed`,
-                    );
-                }
+                await fetchApi(url, {
+                    method,
+                    token: accessToken,
+                    body: needsBody ? JSON.stringify(body) : undefined,
+                });
             } catch (error) {
                 console.error(`Friend action '${action}' failed:`, error);
             }
@@ -248,10 +200,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             return;
         }
         try {
-            const res = await fetch(`${API_BASE_URL}/api/users/me`, {
-                headers: { "Authorization": `Bearer ${token}` },
+            const data = await fetchApi(`${API_BASE_URL}/api/users/me`, {
+                token,
             });
-            const data = await res.json();
             if (data.success) {
                 setUser(data.result);
                 await fetchSocialData(token);
@@ -300,13 +251,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (accessToken && userId && API_BASE_URL) {
             fetchSocialData(accessToken);
             if (socketRef.current) socketRef.current.close();
-
             const WS_URL = API_BASE_URL.replace(/^http/, "ws");
             const socket = new WebSocket(
                 `${WS_URL}/api/chat/socket?token=${accessToken}`,
             );
             socketRef.current = socket;
-
             socket.onmessage = (event) => {
                 const message = JSON.parse(event.data);
                 if (message.type === "social_update") {
@@ -339,26 +288,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const login = useCallback(async (email, password) => {
         if (!API_BASE_URL) throw new Error("API URL not configured.");
-        const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        const data = await fetchApi(`${API_BASE_URL}/api/auth/login`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ email, password }),
         });
-        const data = await response.json();
-        if (!response.ok || !data.success) {
-            throw new Error(data.result || "Authentication failed.");
-        }
         handleOauthLogin(data.result.access_token, data.result.refresh_token);
     }, [handleOauthLogin]);
 
     const loadChatHistory = useCallback(async (partnerId: number) => {
         if (!accessToken || !API_BASE_URL) return;
         try {
-            const response = await fetch(
+            const data = await fetchApi(
                 `${API_BASE_URL}/api/chat/${partnerId}`,
-                { headers: { "Authorization": `Bearer ${accessToken}` } },
+                { token: accessToken },
             );
-            const data = await response.json();
             if (data.success && Array.isArray(data.result)) {
                 setChats((prev) =>
                     new Map(prev).set(
@@ -390,17 +333,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         });
     }, []);
 
-    const value = useMemo(() => ({
+    const value: AuthContextType = useMemo(() => ({
         user,
         accessToken,
         isAuthenticated: !!accessToken,
         isLoading,
-        friends,
-        friendIds,
-        blockedUserIds,
-        pendingRequests,
-        requestStatuses,
-        chatPartners,
+        ...socialState,
         chats,
         unreadFrom,
         login,
@@ -415,12 +353,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         user,
         accessToken,
         isLoading,
-        friends,
-        friendIds,
-        blockedUserIds,
-        pendingRequests,
-        requestStatuses,
-        chatPartners,
+        socialState,
         chats,
         unreadFrom,
         login,

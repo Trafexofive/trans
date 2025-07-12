@@ -23,6 +23,7 @@ export interface PlayerInfo {
 export const useGameSocket = (
     accessToken: string | null,
     matchId: string | null = null,
+    isSpectator: boolean = false,
 ) => {
     const [status, setStatus] = useState<GameStatus>(GameStatus.Connecting);
     const [errorMessage, setErrorMessage] = useState<string>("");
@@ -32,7 +33,6 @@ export const useGameSocket = (
     const [player2, setPlayer2] = useState<PlayerInfo | null>(null);
     const socketRef = useRef<WebSocket | null>(null);
 
-    // This effect handles the creation and cleanup of the WebSocket connection.
     useEffect(() => {
         if (!accessToken) {
             setStatus(GameStatus.Error);
@@ -40,7 +40,6 @@ export const useGameSocket = (
             return;
         }
 
-        // Prevent creating a new socket if one is already open or connecting.
         if (socketRef.current && socketRef.current.readyState < 2) {
             return;
         }
@@ -49,9 +48,13 @@ export const useGameSocket = (
             "http://localhost:3000";
         const WS_URL = API_BASE_URL.replace(/^http/, "ws");
 
+        // Append query parameters to the WebSocket connection URL.
         let socketURL = `${WS_URL}/api/game/socket?token=${accessToken}`;
         if (matchId) {
             socketURL += `&matchId=${matchId}`;
+        }
+        if (isSpectator) {
+            socketURL += `&spectate=true`;
         }
 
         const socket = new WebSocket(socketURL);
@@ -98,14 +101,13 @@ export const useGameSocket = (
             setStatus(GameStatus.Error);
         };
 
-        // Cleanup function to close the socket when the component unmounts or dependencies change
         return () => {
             if (socketRef.current) {
                 socketRef.current.close();
                 socketRef.current = null;
             }
         };
-    }, [accessToken, matchId]); // Dependencies ensure this effect re-runs only if token or matchId changes
+    }, [accessToken, matchId, isSpectator]); // Dependency array ensures reconnection if any of these change.
 
     const movePaddle = useCallback((y: number) => {
         if (socketRef.current?.readyState === WebSocket.OPEN) {

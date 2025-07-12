@@ -18,6 +18,9 @@ function UserRoutes(fastify, options, done) {
     }, UserCtrl.CreateUser);
 
     fastify.get("/", auth, UserCtrl.GetAllUsers);
+
+    fastify.get("/me/social-data", auth, UserCtrl.GetMySocialData);
+
     fastify.get("/me", auth, UserCtrl.GetMyProfile);
     fastify.put("/me", auth, UserCtrl.UpdateMyProfile);
     fastify.post("/me/avatar", auth, UserCtrl.UpdateMyAvatar);

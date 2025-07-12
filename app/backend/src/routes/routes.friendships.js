@@ -33,12 +33,12 @@ async function FriendshipRoutes(fastify, options) {
     );
 
     // --- Blocking Workflow ---
-    fastify.get("/blocked", auth, FriendshipCtrl.getBlockedUsers); // <<< NEW
+    fastify.get("/blocked", auth, FriendshipCtrl.getBlockedUsers); 
     fastify.get("/block/:id", auth, FriendshipCtrl.getBlockStatus);
     fastify.post("/block", auth, FriendshipCtrl.blockUser);
     fastify.delete("/block/:blocked_id", auth, FriendshipCtrl.unblockUser);
 
-    // --- Remove a Friend (Keep last for parameter specificity) ---
+    // --- Remove a Friend ---
     fastify.delete("/:friend_id", auth, FriendshipCtrl.removeFriend);
 }
 

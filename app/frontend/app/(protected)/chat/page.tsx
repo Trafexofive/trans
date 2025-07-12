@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Gamepad2, MessageSquare, ShieldBan, UserX } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import { cn, getAvatarSrc } from "@/lib/utils"; // <<< IMPORT CENTRALIZED HELPER
+import { cn, getAvatarSrc } from "@/lib/utils";
 
 const RenderChatMessage = memo(({ content }: { content: string }) => {
     const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
@@ -111,7 +111,7 @@ export default function ChatPage() {
         [];
 
     return (
-        <Card className="w-full h-full flex shadow-2xl rounded-none border-none">
+        <Card className="w-full h-[calc(100vh-3.5rem)] flex shadow-2xl rounded-none border-none">
             <div className="w-1/3 min-w-[300px] border-r border-border flex flex-col">
                 <div className="p-4 border-b border-border">
                     <h2 className="text-xl font-semibold">Conversations</h2>

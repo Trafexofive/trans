@@ -15,7 +15,8 @@ import {
     UserPlus,
     UserX,
 } from "lucide-react";
-import { getAvatarSrc } from "@/lib/utils"; 
+import { getAvatarSrc } from "@/lib/utils";
+import { StatCard } from "@/components/ui/StatCard"; // <<< IMPORT REUSABLE COMPONENT
 
 // --- Interfaces ---
 interface UserProfile {
@@ -37,26 +38,6 @@ interface ProfilePageProps {
 }
 
 // --- Reusable Components ---
-const StatCard = (
-    { title, value, icon }: {
-        title: string;
-        value: string | number;
-        icon: React.ReactNode;
-    },
-) => (
-    <Card className="bg-card/50 backdrop-blur-sm">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-                {title}
-            </CardTitle>
-            {icon}
-        </CardHeader>
-        <CardContent>
-            <div className="text-3xl font-bold">{value}</div>
-        </CardContent>
-    </Card>
-);
-
 const ActionButton = (
     { targetUser, loggedInUser, friendIds, requestStatuses, friendAction }: any,
 ) => {

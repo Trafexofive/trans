@@ -1,52 +1,41 @@
-const Game = require('./Game');
-const UserModel = require('../models/models.users');
-const TournamentModel = require('../models/models.tournament');
-
-const QUEUE_TIMEOUT = 60000; // 60 seconds
-const QUEUE_CLEANUP_INTERVAL = 5000; // 5 seconds
+const Game = require("./Game");
+const UserModel = require("../models/models.users");
+const TournamentModel = require("../models/models.tournament");
 
 class GameManager {
     constructor(db) {
         this.db = db;
         this.publicQueue = [];
-        this.pendingGames = new Map(); // Stores players waiting for a tournament match
-        this.activeGames = new Map();
+        this.pendingGames = new Map();
+        // Maps a player's socket to their active game instance for input handling.
+        this.activeGamesBySocket = new Map();
+        // Maps a unique match ID to its game instance for spectator lookups.
+        this.activeGamesById = new Map();
+        // Maps a socket to a player's user ID for quick identification on disconnect.
         this.socketToPlayerId = new Map();
-        console.log("GameManager initialized with queue and tournament handling.");
-        this.startQueueCleanup();
+        console.log(
+            "GameManager initialized with spectator and tournament handling.",
+        );
     }
 
-    startQueueCleanup() {
-        setInterval(() => {
-            const now = Date.now();
-            const timedOutPlayers = [];
-            
-            this.publicQueue = this.publicQueue.filter(entry => {
-                if (now - entry.joinedAt > QUEUE_TIMEOUT) {
-                    timedOutPlayers.push(entry.player);
-                    return false; // Remove from queue
-                }
-                return true; // Keep in queue
-            });
-
-            if (timedOutPlayers.length > 0) {
-                console.log(`Timing out ${timedOutPlayers.length} players from queue.`);
-                timedOutPlayers.forEach(player => {
-                    try {
-                        if (player.socket.readyState === 1) { // WebSocket.OPEN
-                           player.socket.send(JSON.stringify({ type: 'queue_timeout' }));
-                           player.socket.close();
-                        }
-                    } catch (e) {
-                        console.error(`Error sending timeout to player ${player.id}:`, e.message);
-                    }
-                });
-            }
-        }, QUEUE_CLEANUP_INTERVAL);
-    }
-
-    handlePlayerConnection(player, matchId) {
+    handlePlayerConnection(player, matchId, isSpectator = false) {
         this.socketToPlayerId.set(player.socket, player.id);
+
+        if (isSpectator) {
+            if (!matchId) {
+                player.socket.send(
+                    JSON.stringify({
+                        type: "error",
+                        payload: "Match ID is required for spectating.",
+                    }),
+                );
+                player.socket.close();
+                return;
+            }
+            this.handleSpectatorJoin(player, matchId);
+            return;
+        }
+
         if (matchId) {
             this.handlePrivateMatchJoin(player, matchId);
         } else {
@@ -54,117 +43,153 @@ class GameManager {
         }
     }
 
-    handlePublicMatchJoin(player) {
-        if (this.publicQueue.some(entry => entry.player.id === player.id)) {
-            player.socket.send(JSON.stringify({ type: 'error', payload: 'You are already in the matchmaking queue.' }));
-            return;
-        }
-        console.log(`Player ${player.name} (ID: ${player.id}) added to public queue.`);
-        this.publicQueue.push({ player, joinedAt: Date.now() });
-        this._tryStartPublicGame();
-    }
-
-    _tryStartPublicGame() {
-        if (this.publicQueue.length >= 2) {
-            const entry1 = this.publicQueue.shift();
-            const entry2 = this.publicQueue.shift();
-            const player1 = entry1.player;
-            const player2 = entry2.player;
-
-            if (!player1 || !player2 || player1.id === player2.id) {
-                console.error("Matchmaking integrity error: Invalid players.");
-                if(player1) this.publicQueue.unshift(entry1);
-                if(player2) this.publicQueue.unshift(entry2);
-                return;
-            }
-
-            console.log(`Public Match: ${player1.name} vs ${player2.name}`);
-            const onGameOver = async (winnerId, loserId) => {
-                await UserModel.user_add_win(this.db, winnerId);
-                await UserModel.user_add_loss(this.db, loserId);
-                console.log(`Public game over. Winner: ${winnerId}, Loser: ${loserId}. Stats updated.`);
-            };
-            
-            const game = new Game(player1, player2, onGameOver);
-            this.activeGames.set(player1.socket, game);
-            this.activeGames.set(player2.socket, game);
-            game.start();
+    handleSpectatorJoin(spectator, matchId) {
+        const game = this.activeGamesById.get(matchId);
+        if (game && !game.isOver) {
+            game.addSpectator(spectator.socket);
+            console.log(`Spectator ${spectator.id} joined match ${matchId}`);
+        } else {
+            spectator.socket.send(
+                JSON.stringify({
+                    type: "error",
+                    payload: "Match not found or has already ended.",
+                }),
+            );
+            spectator.socket.close();
         }
     }
-    
+
     async handlePrivateMatchJoin(player, matchId) {
-        const matchDetails = await TournamentModel.tournament_get_single_match(this.db, matchId);
+        const matchDetails = await TournamentModel.tournament_get_single_match(
+            this.db,
+            matchId,
+        );
         if (!matchDetails.success || !matchDetails.result) {
-            return player.socket.send(JSON.stringify({ type: 'error', payload: 'Tournament match not found.' }));
+            return player.socket.send(
+                JSON.stringify({
+                    type: "error",
+                    payload: "Tournament match not found.",
+                }),
+            );
         }
 
         const match = matchDetails.result;
-        if (match.status !== 'pending') {
-            return player.socket.send(JSON.stringify({ type: 'error', payload: `Match is already ${match.status}.` }));
+        if (match.status !== "pending") {
+            return player.socket.send(
+                JSON.stringify({
+                    type: "error",
+                    payload: `Match is already ${match.status}.`,
+                }),
+            );
         }
         if (player.id !== match.player1_id && player.id !== match.player2_id) {
-            return player.socket.send(JSON.stringify({ type: 'error', payload: 'You are not a participant in this match.' }));
+            return player.socket.send(
+                JSON.stringify({
+                    type: "error",
+                    payload: "You are not a participant in this match.",
+                }),
+            );
         }
 
         if (!this.pendingGames.has(matchId)) {
             this.pendingGames.set(matchId, [player]);
-            player.socket.send(JSON.stringify({ type: 'waitingForOpponent' }));
-            console.log(`Tournament Match ${matchId}: ${player.name} is waiting.`);
+            player.socket.send(JSON.stringify({ type: "waitingForOpponent" }));
         } else {
             const waitingPlayer = this.pendingGames.get(matchId)[0];
-            if (waitingPlayer.id === player.id) return; // Player reconnected, do nothing.
+            if (waitingPlayer.id === player.id) return;
 
             const player1 = waitingPlayer;
             const player2 = player;
             this.pendingGames.delete(matchId);
 
-            console.log(`Tournament Match ${matchId}: ${player1.name} vs ${player2.name}. Starting.`);
-
             const onGameOver = async (winnerId, loserId) => {
-                await TournamentModel.match_update_winner(this.db, matchId, winnerId);
+                await TournamentModel.match_update_winner(
+                    this.db,
+                    matchId,
+                    winnerId,
+                );
                 await UserModel.user_add_win(this.db, winnerId);
                 await UserModel.user_add_loss(this.db, loserId);
-                console.log(`Tournament match ${matchId} over. Winner: ${winnerId}. Tournament advancing.`);
+                this.activeGamesById.delete(matchId);
             };
-            
-            const game = new Game(player1, player2, onGameOver);
-            this.activeGames.set(player1.socket, game);
-            this.activeGames.set(player2.socket, game);
+
+            const game = new Game(player1, player2, onGameOver, matchId);
+            this.activeGamesBySocket.set(player1.socket, game);
+            this.activeGamesBySocket.set(player2.socket, game);
+            this.activeGamesById.set(matchId, game);
             game.start();
         }
+    }
+
+    _tryStartPublicGame() {
+        if (this.publicQueue.length >= 2) {
+            const player1 = this.publicQueue.shift().player;
+            const player2 = this.publicQueue.shift().player;
+
+            // Create a unique, predictable ID for public matches for spectator lookup.
+            const matchId = `public-${Date.now()}-${player1.id}-${player2.id}`;
+            const onGameOver = async (winnerId, loserId) => {
+                await UserModel.user_add_win(this.db, winnerId);
+                await UserModel.user_add_loss(this.db, loserId);
+                this.activeGamesById.delete(matchId); // Clean up from ID map on game end.
+            };
+
+            const game = new Game(player1, player2, onGameOver, matchId);
+            this.activeGamesBySocket.set(player1.socket, game);
+            this.activeGamesBySocket.set(player2.socket, game);
+            this.activeGamesById.set(matchId, game);
+            game.start();
+        }
+    }
+
+    handlePublicMatchJoin(player) {
+        if (this.publicQueue.some((entry) => entry.player.id === player.id)) {
+            player.socket.send(
+                JSON.stringify({
+                    type: "error",
+                    payload: "You are already in the matchmaking queue.",
+                }),
+            );
+            return;
+        }
+        this.publicQueue.push({ player });
+        this._tryStartPublicGame();
     }
 
     removePlayer(socket) {
         const playerId = this.socketToPlayerId.get(socket);
         if (!playerId) return;
 
-        // Remove from public queue if present
-        const queueIndex = this.publicQueue.findIndex(entry => entry.player.id === playerId);
-        if (queueIndex > -1) {
-            this.publicQueue.splice(queueIndex, 1);
-            console.log(`Player ${playerId} removed from public queue.`);
+        // Remove from public queue if present.
+        this.publicQueue = this.publicQueue.filter((entry) =>
+            entry.player.id !== playerId
+        );
+
+        const game = this.activeGamesBySocket.get(socket);
+        if (game) {
+            // If the socket belongs to a player in an active game.
+            if (!game.isOver) {
+                const opponent = game.player1.socket === socket
+                    ? game.player2
+                    : game.player1;
+                game.stop(opponent.id); // Forfeit to the opponent.
+            }
+            this.activeGamesBySocket.delete(game.player1.socket);
+            if (game.player2) {
+                this.activeGamesBySocket.delete(game.player2.socket);
+            }
+        } else {
+            // If not a player, they might be a spectator. Check all active games.
+            this.activeGamesById.forEach((gameInstance) => {
+                gameInstance.removeSpectator(socket);
+            });
         }
 
-        // Forfeit any active game
-        const game = this.activeGames.get(socket);
-        if (game && !game.isOver) {
-            const opponent = game.player1.socket === socket ? game.player2 : game.player1;
-            game.stop(opponent.id); // Forfeit to the opponent
-            console.log(`Player ${playerId} disconnected. Forfeiting game.`);
-        }
-        
-        // Cleanup maps
-        if (game) {
-            this.activeGames.delete(game.player1.socket);
-            if (game.player2) this.activeGames.delete(game.player2.socket);
-        }
         this.socketToPlayerId.delete(socket);
-        
-        console.log(`Player ${playerId} connection closed and cleaned up from all game activities.`);
     }
-    
+
     handlePlayerInput(socket, data) {
-        const game = this.activeGames.get(socket);
+        const game = this.activeGamesBySocket.get(socket);
         const playerId = this.socketToPlayerId.get(socket);
         if (game && playerId) {
             game.handlePlayerInput(playerId, data);

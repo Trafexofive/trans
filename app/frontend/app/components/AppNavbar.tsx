@@ -9,11 +9,12 @@ import {
     SheetClose,
     SheetContent,
     SheetTrigger,
-} from "@/components/ui/sheet"; // Import Sheet components
+} from "@/components/ui/sheet";
 import { FriendRequestsMenu } from "./FriendRequestsMenu";
-import ProfileMenu from "./ProfileMenu"; // Import the new ProfileMenu
-import { LogOut, Menu, Settings, Swords, UserCircle } from "lucide-react"; // Import new icons
+import ProfileMenu from "./ProfileMenu";
+import { LogOut, Menu, Settings, UserCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Icons } from "@/components/ui/icons"; // <<< IMPORT NEW ICONS
 
 export default function AppNavbar() {
     const pathname = usePathname();
@@ -34,13 +35,12 @@ export default function AppNavbar() {
                     href="/dashboard"
                     className="mr-6 flex items-center gap-2"
                 >
-                    <Swords className="h-6 w-6 text-primary" />
+                    <Icons.Logo />
                     <span className="hidden font-bold sm:inline-block">
                         TRANSCENDENCE
                     </span>
                 </Link>
 
-                {/* Desktop Navigation */}
                 <nav className="hidden items-center gap-6 text-sm md:flex">
                     {navLinks.map((link) => (
                         <Link
@@ -74,7 +74,6 @@ export default function AppNavbar() {
                             </Button>
                         )}
 
-                    {/* Mobile Navigation Trigger */}
                     <div className="md:hidden">
                         <Sheet>
                             <SheetTrigger asChild>

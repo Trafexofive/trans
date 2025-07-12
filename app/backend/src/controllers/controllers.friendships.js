@@ -1,13 +1,11 @@
 const FriendshipModel = require("../models/models.friendships");
 
-function notifyUsers(connectionMap, userIds) {
-    const notification = JSON.stringify({ type: "social_update" });
+function notifyUsers(connectionMap, userIds, message) {
     const uniqueUserIds = [...new Set(userIds)];
-
     uniqueUserIds.forEach((id) => {
         const socket = connectionMap.get(id);
-        if (socket && socket.readyState === 1) { // 1 === WebSocket.OPEN
-            socket.send(notification);
+        if (socket && socket.readyState === 1) { // WebSocket.OPEN
+            socket.send(message);
         }
     });
 }
@@ -31,6 +29,37 @@ const FriendshipCtrl = {
         reply.code(res.code).send(res);
     },
 
+    async blockUser(request, reply) {
+        const blocker_id = request.user.payload.id;
+        const { blocked_id } = request.body;
+
+        await FriendshipModel.remove_friend(this.db, blocker_id, blocked_id);
+        const res = await FriendshipModel.block_user(
+            this.db,
+            blocker_id,
+            blocked_id,
+        );
+
+        if (res.success) {
+            // Send a generic social update to both users to refresh lists.
+            notifyUsers(
+                this.activeConnections,
+                [blocker_id, blocked_id],
+                JSON.stringify({ type: "social_update" }),
+            );
+
+            // Send a specific "you were blocked" notification to the target user.
+            const blockedSocket = this.activeConnections.get(blocked_id);
+            if (blockedSocket && blockedSocket.readyState === 1) {
+                blockedSocket.send(JSON.stringify({
+                    type: "user_blocked",
+                    payload: { blockerName: request.user.payload.name },
+                }));
+            }
+        }
+        reply.code(res.code).send(res);
+    },
+
     async removeFriend(request, reply) {
         const user_id = request.user.payload.id;
         const friend_id = parseInt(request.params.friend_id, 10);
@@ -40,7 +69,11 @@ const FriendshipCtrl = {
             friend_id,
         );
         if (res.success) {
-            notifyUsers(this.activeConnections, [user_id, friend_id]);
+            notifyUsers(
+                this.activeConnections,
+                [user_id, friend_id],
+                JSON.stringify({ type: "social_update" }),
+            );
         }
         reply.code(res.code).send(res);
     },
@@ -60,7 +93,11 @@ const FriendshipCtrl = {
             receiver_id,
         );
         if (res.success) {
-            notifyUsers(this.activeConnections, [sender_id, receiver_id]);
+            notifyUsers(
+                this.activeConnections,
+                [sender_id, receiver_id],
+                JSON.stringify({ type: "social_update" }),
+            );
         }
         reply.code(res.code).send(res);
     },
@@ -80,7 +117,6 @@ const FriendshipCtrl = {
             this.db,
             request_id,
         );
-
         if (
             !requestDetails.success ||
             requestDetails.result.receiver_id !== receiver_id
@@ -90,7 +126,6 @@ const FriendshipCtrl = {
                 result: "Request not found or permission denied.",
             });
         }
-
         const res = await FriendshipModel.accept_friend_request(
             this.db,
             request_id,
@@ -100,7 +135,7 @@ const FriendshipCtrl = {
             notifyUsers(this.activeConnections, [
                 requestDetails.result.sender_id,
                 receiver_id,
-            ]);
+            ], JSON.stringify({ type: "social_update" }));
         }
         reply.code(res.code).send(res);
     },
@@ -112,7 +147,6 @@ const FriendshipCtrl = {
             this.db,
             request_id,
         );
-
         if (
             !requestDetails.success ||
             requestDetails.result.receiver_id !== receiver_id
@@ -122,7 +156,6 @@ const FriendshipCtrl = {
                 result: "Request not found.",
             });
         }
-
         const res = await FriendshipModel.decline_friend_request(
             this.db,
             request_id,
@@ -132,7 +165,7 @@ const FriendshipCtrl = {
             notifyUsers(this.activeConnections, [
                 requestDetails.result.sender_id,
                 receiver_id,
-            ]);
+            ], JSON.stringify({ type: "social_update" }));
         }
         reply.code(res.code).send(res);
     },
@@ -144,7 +177,6 @@ const FriendshipCtrl = {
             this.db,
             request_id,
         );
-
         if (
             !requestDetails.success ||
             requestDetails.result.sender_id !== sender_id
@@ -154,7 +186,6 @@ const FriendshipCtrl = {
                 result: "Request not found or permission denied.",
             });
         }
-
         const res = await FriendshipModel.cancel_friend_request(
             this.db,
             request_id,
@@ -164,7 +195,7 @@ const FriendshipCtrl = {
             notifyUsers(this.activeConnections, [
                 sender_id,
                 requestDetails.result.receiver_id,
-            ]);
+            ], JSON.stringify({ type: "social_update" }));
         }
         reply.code(res.code).send(res);
     },
@@ -177,21 +208,6 @@ const FriendshipCtrl = {
         reply.code(res.code).send(res);
     },
 
-    async blockUser(request, reply) {
-        const blocker_id = request.user.payload.id;
-        const { blocked_id } = request.body;
-        await FriendshipModel.remove_friend(this.db, blocker_id, blocked_id);
-        const res = await FriendshipModel.block_user(
-            this.db,
-            blocker_id,
-            blocked_id,
-        );
-        if (res.success) {
-            notifyUsers(this.activeConnections, [blocker_id, blocked_id]);
-        }
-        reply.code(res.code).send(res);
-    },
-
     async unblockUser(request, reply) {
         const blocker_id = request.user.payload.id;
         const blocked_id = parseInt(request.params.blocked_id, 10);
@@ -201,7 +217,11 @@ const FriendshipCtrl = {
             blocked_id,
         );
         if (res.success) {
-            notifyUsers(this.activeConnections, [blocker_id, blocked_id]);
+            notifyUsers(
+                this.activeConnections,
+                [blocker_id, blocked_id],
+                JSON.stringify({ type: "social_update" }),
+            );
         }
         reply.code(res.code).send(res);
     },

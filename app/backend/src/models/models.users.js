@@ -71,11 +71,10 @@ const UserModel = {
         }
     },
     
-    async user_create(db, name, email, password, avatar = null) { // Default avatar is now null
+    async user_create(db, name, email, password, avatar = null) {
         try {
             const hashedPassword = await bcrypt.hash(password, 10);
             const stmt = db.prepare(`INSERT INTO users (name, email, password, avatar) VALUES (?, ?, ?, ?)`);
-            // Pass avatar directly. If it's null, the DB will store NULL.
             const result = await stmt.run(name, email, hashedPassword, avatar);
             if (result.changes === 0) {
                 return { success: false, code: 400, result: "user creation failed" };

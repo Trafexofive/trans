@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { Suspense, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
     GameState,
@@ -10,6 +10,7 @@ import {
 } from "@/hooks/useGameSocket";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
+import { Icons } from "@/components/ui/icons";
 
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 600;
@@ -27,17 +28,11 @@ interface GameCanvasProps {
 const GameCanvas = React.memo(
     ({ gameState, onMouseMove, player1, player2 }: GameCanvasProps) => {
         const canvasRef = useRef<HTMLCanvasElement>(null);
-
         useEffect(() => {
-            const canvas = canvasRef.current;
-            const context = canvas?.getContext("2d");
+            const context = canvasRef.current?.getContext("2d");
             if (!context || !gameState) return;
-
-            // Clear canvas
             context.fillStyle = "#161618";
             context.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-            // Draw center line
             context.strokeStyle = "#4A4A4A";
             context.beginPath();
             context.setLineDash([10, 10]);
@@ -45,8 +40,6 @@ const GameCanvas = React.memo(
             context.lineTo(CANVAS_WIDTH / 2, CANVAS_HEIGHT);
             context.stroke();
             context.setLineDash([]);
-
-            // Draw paddles and ball
             context.fillStyle = "#FCFDFD";
             if (player1 && gameState.paddles[player1.id]) {
                 context.fillRect(
@@ -64,7 +57,6 @@ const GameCanvas = React.memo(
                     PADDLE_HEIGHT,
                 );
             }
-
             context.beginPath();
             context.arc(
                 gameState.ball.x,
@@ -74,8 +66,6 @@ const GameCanvas = React.memo(
                 Math.PI * 2,
             );
             context.fill();
-
-            // Draw scores
             context.font = '48px "Courier New", Courier, monospace';
             if (player1 && gameState.score[player1.id] !== undefined) {
                 context.fillText(
@@ -99,7 +89,6 @@ const GameCanvas = React.memo(
             const rect = canvasRef.current?.getBoundingClientRect();
             if (rect) onMouseMove(event.clientY - rect.top);
         };
-
         return (
             <canvas
                 ref={canvasRef}
@@ -136,7 +125,6 @@ interface StatusScreenProps {
     showSpinner?: boolean;
     children?: React.ReactNode;
 }
-
 const StatusScreen = (
     { title, message, showSpinner = false, children }: StatusScreenProps,
 ) => (
@@ -144,20 +132,20 @@ const StatusScreen = (
         <h2 className="text-3xl font-bold mb-3">{title}</h2>
         {message && <p className="text-muted-foreground mb-4">{message}</p>}
         {showSpinner && (
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary my-4">
-            </div>
+            <Icons.Spinner className="h-8 w-8 text-primary animate-spin my-4" />
         )}
         {children}
     </div>
 );
 
-export default function PlayPage() {
+function PlayPageContent() {
     const { accessToken, user, isLoading: isAuthLoading } = useAuth();
     const router = useRouter();
     const searchParams = useSearchParams();
 
     const matchId = searchParams.get("matchId");
     const tournamentId = searchParams.get("tournamentId");
+    const isSpectator = searchParams.get("spectate") === "true";
 
     const {
         status,
@@ -167,7 +155,7 @@ export default function PlayPage() {
         movePaddle,
         player1,
         player2,
-    } = useGameSocket(accessToken, matchId);
+    } = useGameSocket(accessToken, matchId, isSpectator);
 
     useEffect(() => {
         if (status === GameStatus.GameOver && tournamentId) {
@@ -190,8 +178,13 @@ export default function PlayPage() {
         ? (winner.id === user?.id ? "You" : winner.name)
         : null;
 
+    const handlePostGameAction = () => {
+        if (isSpectator) router.back();
+        else window.location.reload();
+    };
+
     return (
-        <div className="flex h-full items-center justify-center">
+        <div className="flex h-full items-center justify-center animate-fade-in-up">
             {status === GameStatus.Connecting && (
                 <StatusScreen
                     title="Connecting to Game Server..."
@@ -199,20 +192,30 @@ export default function PlayPage() {
                 />
             )}
             {status === GameStatus.Waiting && (
-                <StatusScreen title="Searching for Opponent..." showSpinner>
+                <StatusScreen
+                    title={isSpectator
+                        ? "Waiting for Match to Start..."
+                        : "Searching for Opponent..."}
+                    showSpinner
+                >
                     <QueueTimer />
                 </StatusScreen>
             )}
             {status === GameStatus.InProgress && (
-                <div className="flex flex-col items-center">
-                    <div className="flex justify-between w-full max-w-[800px] mb-2 text-white text-lg">
+                <div className="flex flex-col items-center relative">
+                    {isSpectator && (
+                        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-blue-900/50 text-blue-300 px-4 py-1 rounded-full text-sm font-semibold border border-blue-700">
+                            SPECTATOR MODE
+                        </div>
+                    )}
+                    <div className="flex justify-between w-full max-w-[800px] my-2 text-white text-lg font-semibold">
                         <span>{player1?.name || "Player 1"}</span>
                         <span>vs</span>
                         <span>{player2?.name || "Player 2"}</span>
                     </div>
                     <GameCanvas
                         gameState={gameState}
-                        onMouseMove={movePaddle}
+                        onMouseMove={isSpectator ? () => {} : movePaddle}
                         player1={player1}
                         player2={player2}
                     />
@@ -225,20 +228,13 @@ export default function PlayPage() {
                         ? `${winnerName} won!`
                         : "The match has concluded."}
                 >
-                    {tournamentId
-                        ? (
-                            <p className="text-muted-foreground mt-4">
-                                Redirecting to tournament...
-                            </p>
-                        )
-                        : (
-                            <Button
-                                onClick={() => window.location.reload()}
-                                className="mt-6"
-                            >
-                                Play Again
-                            </Button>
-                        )}
+                    <Button onClick={handlePostGameAction} className="mt-6">
+                        {isSpectator
+                            ? "Back to Previous Page"
+                            : tournamentId
+                            ? "Return to Tournament"
+                            : "Play Again"}
+                    </Button>
                 </StatusScreen>
             )}
             {(status === GameStatus.Error ||
@@ -262,5 +258,15 @@ export default function PlayPage() {
                 </StatusScreen>
             )}
         </div>
+    );
+}
+
+export default function PlayPage() {
+    return (
+        <Suspense
+            fallback={<StatusScreen title="Loading Game..." showSpinner />}
+        >
+            <PlayPageContent />
+        </Suspense>
     );
 }

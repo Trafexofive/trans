@@ -1,76 +1,74 @@
-const AuthCtl = require('../controllers/controllers.auth')
+const AuthCtl = require("../controllers/controllers.auth");
 
-async function AuthRoutes(fastify)
-{
-    fastify.post('/login', {
+async function AuthRoutes(fastify) {
+    fastify.post("/login", {
         schema: {
             body: {
-                type: 'object',
-                required: ['email', 'password'],
+                type: "object",
+                required: ["email", "password"],
                 properties: {
-                    email: { type: 'string' },
-                    password: { type: 'string' }
-                }
-            }
-        }
+                    email: { type: "string" },
+                    password: { type: "string" },
+                },
+            },
+        },
+    }, AuthCtl.Login);
 
-    },AuthCtl.Login)
-
-    fastify.post('/refresh', {
+    fastify.post("/refresh", {
         onRequest: [fastify.auth],
         schema: {
             body: {
-                type: 'object',
-                required: ['refresh_token'],
+                type: "object",
+                required: ["refresh_token"],
                 properties: {
-                    refresh_token: { type: 'string' }
-                }
-            }
-        }
+                    refresh_token: { type: "string" },
+                },
+            },
+        },
+    }, AuthCtl.Refresh);
 
-    }, AuthCtl.Refresh)
-
-    fastify.delete('/logout', {
+    fastify.delete("/logout", {
         onRequest: [fastify.auth],
         schema: {
             body: {
-                type: 'object',
-                required: ['refresh_token'],
+                type: "object",
+                required: ["refresh_token"],
                 properties: {
-                    refresh_token: { type: 'string' }
-                }
-            }
-        }
-
-    }, AuthCtl.Logout)
+                    refresh_token: { type: "string" },
+                },
+            },
+        },
+    }, AuthCtl.Logout);
 
     // create 2fa secret for the session user
-    fastify.get('/2fa_create', { onRequest: [fastify.auth] }, AuthCtl.TwofaCreate)
-    
-    // get 2fa secret for the session user
-    fastify.get('/2fa_get', { onRequest: [fastify.auth] }, AuthCtl.TwofaGet)
-    
-    
-    // delete 2fa secret for the session user
-    fastify.delete('/2fa_delete', { onRequest: [fastify.auth] }, AuthCtl.TwofaDelete)
+    fastify.get(
+        "/2fa_create",
+        { onRequest: [fastify.auth] },
+        AuthCtl.TwofaCreate,
+    );
 
-    fastify.post('/2fa_verify', {
+    // get 2fa secret for the session user
+    fastify.get("/2fa_get", { onRequest: [fastify.auth] }, AuthCtl.TwofaGet);
+
+    // delete 2fa secret for the session user
+    fastify.delete(
+        "/2fa_delete",
+        { onRequest: [fastify.auth] },
+        AuthCtl.TwofaDelete,
+    );
+
+    fastify.post("/2fa_verify", {
         onRequest: [fastify.auth],
         schema: {
             body: {
-                type: 'object',
-                required: ['token'],
+                type: "object",
+                required: ["token"],
                 properties: {
-                    token: { type: 'string' }
-                }
-            }
-        }
-
-    }, AuthCtl.TwofaVerify)
-
+                    token: { type: "string" },
+                },
+            },
+        },
+    }, AuthCtl.TwofaVerify);
 }
 
-module.exports = AuthRoutes
-
-// swagger specification for the above routes
-
+module.exports = AuthRoutes;
