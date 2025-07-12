@@ -9,7 +9,21 @@ require("dotenv").config();
 
 const AuthCtl = {
     async Login(request, reply) {
-        const { email, password } = request.body;
+        // sanitize data
+        rawUserData = request.body
+        const { errors, sanitized, isValid } = check_and_sanitize(rawUserData);
+
+        if (!isValid)
+        {
+            return reply.status(400).send({
+                success: false,
+                code: 400,
+                result: errors.join(", ")
+            })
+        }
+
+        const { email, password } = sanitized;
+
         const res = await UserModel.user_fetch_by_email(this.db, email);
 
         if (res.success === false) {
@@ -29,6 +43,21 @@ const AuthCtl = {
                 result: "Invalid email or password.",
             });
         }
+
+        //------- check if 2fa is activated:
+        const check_two_fa = await TwofaModel.two_fa_get_by_id(this.db, user.id)
+        if (check_two_fa.success && check_two_fa.result.verified)
+        {
+            const preAuthTokenPayload = { id: user.id, name: user.name, email: user.email, pre_auth: true };
+            const pre_auth_token = gen_jwt_token(this, preAuthTokenPayload, '5m');
+            return reply.status(202).send({
+                success: true,
+                code: 202,
+                result: "2fa token required",
+                pre_auth_token: pre_auth_token
+            })
+        }
+        //---------------------------
 
         await RefreshtokenModel.refresh_tokens_delete_by_id(
             this.db,
@@ -67,8 +96,7 @@ const AuthCtl = {
 
     async Refresh(request, reply) {
         const { refresh_token } = request.body;
-        const decoded_token = this.jwt.verify(refresh_token);
-        const user_id = decoded_token.payload.id;
+        const user_id = request.user.id;
 
         const res = await RefreshtokenModel.refresh_tokens_check_by_token(
             this.db,
@@ -77,13 +105,12 @@ const AuthCtl = {
         );
 
         if (!res.success) {
-            reply.status(res.code).send(res);
-            return;
+            return reply.status(res.code).send(res);
         }
 
         const new_access_token = gen_jwt_token(
             this,
-            decoded_token.payload,
+            request.user,
             process.env.ACCESS_TOKEN_EXPIRE,
         );
 
@@ -95,13 +122,8 @@ const AuthCtl = {
     },
 
     async Logout(request, reply) {
-        const { refresh_token } = request.body;
-        const decoded_token = this.jwt.verify(refresh_token);
-        const user_id = decoded_token.payload.id;
-        const res = await RefreshtokenModel.refresh_tokens_delete_by_id(
-            this.db,
-            user_id,
-        );
+        // No need to verify the JWT here. If the token is invalid, the delete will just fail.
+        const res = await RefreshtokenModel.refresh_tokens_delete_by_token(this.db, refresh_token);
         reply.status(res.code).send(res);
     },
 
