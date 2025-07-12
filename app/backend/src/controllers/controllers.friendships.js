@@ -25,6 +25,12 @@ const FriendshipCtrl = {
         reply.code(res.code).send(res);
     },
 
+    async getBlockedUsers(request, reply) {
+        const user_id = request.user.payload.id;
+        const res = await FriendshipModel.get_blocked_ids(this.db, user_id);
+        reply.code(res.code).send(res);
+    },
+
     async removeFriend(request, reply) {
         const user_id = request.user.payload.id;
         const friend_id = parseInt(request.params.friend_id, 10);

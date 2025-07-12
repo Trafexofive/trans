@@ -31,65 +31,43 @@ export default function TournamentsPage() {
         if (!accessToken) return;
         setIsLoading(true);
         try {
-            const response = await fetch(`${API_BASE_URL}/api/tournaments`, {
-                headers: { 'Authorization': `Bearer ${accessToken}` },
-            });
+            const response = await fetch(`${API_BASE_URL}/api/tournaments`, { headers: { 'Authorization': `Bearer ${accessToken}` } });
             const data = await response.json();
-            if (data.success) {
-                setTournaments(data.result);
-            } else {
-                throw new Error(data.result);
-            }
-        } catch (err: any) {
-            setError(err.message);
-        } finally {
-            setIsLoading(false);
-        }
+            if (data.success) setTournaments(data.result); else throw new Error(data.result);
+        } catch (err: any) { setError(err.message); } 
+        finally { setIsLoading(false); }
     }, [accessToken, API_BASE_URL]);
 
-    useEffect(() => {
-        if (accessToken) {
-            fetchTournaments();
-        }
-    }, [accessToken, fetchTournaments]);
+    useEffect(() => { if (accessToken) fetchTournaments(); }, [accessToken, fetchTournaments]);
 
     const handleCreateTournament = async () => {
-        if (!tournamentName.trim() || !accessToken) {
-            setError("Tournament name cannot be empty.");
-            return;
-        }
+        if (!tournamentName.trim()) { setError("Tournament name cannot be empty."); return; }
         setIsCreating(true);
         setError("");
         try {
             const response = await fetch(`${API_BASE_URL}/api/tournaments`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${accessToken}`,
-                },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
                 body: JSON.stringify({ name: tournamentName }),
             });
             const data = await response.json();
             if (!data.success) throw new Error(data.result);
             router.push(`/tournaments/${data.result.id}`);
-        } catch (err: any) {
-            setError(err.message);
-        } finally {
-            setIsCreating(false);
-        }
+        } catch (err: any) { setError(err.message); } 
+        finally { setIsCreating(false); }
     };
 
     return (
-        <div className="container mx-auto max-w-7xl py-8 space-y-8">
-            <h1 className="text-3xl font-bold">Tournaments</h1>
-            <Card>
+        <div className="container mx-auto max-w-7xl py-8 space-y-8 animate-fade-in-up">
+            <h1 className="text-4xl font-bold tracking-tight">Tournaments</h1>
+            <Card className="bg-card/50 backdrop-blur-sm">
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2"><PlusCircle className="h-6 w-6"/>Create New Tournament</CardTitle>
-                    <CardDescription>Start a new tournament and invite your friends to compete.</CardDescription>
+                    <CardDescription>Start a new bracket and invite your friends to compete for glory.</CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col sm:flex-row gap-2">
                     <Input value={tournamentName} onChange={(e) => setTournamentName(e.target.value)} placeholder="Enter tournament name..."/>
-                    <Button onClick={handleCreateTournament} disabled={isCreating}>
+                    <Button onClick={handleCreateTournament} disabled={isCreating} className="transition-transform hover:scale-105">
                         {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Create
                     </Button>
@@ -104,25 +82,27 @@ export default function TournamentsPage() {
                 ) : tournaments.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {tournaments.map(t => (
-                            <Card key={t.id} className="hover:border-primary transition-colors duration-300 group">
+                            <Card key={t.id} className="bg-card/50 backdrop-blur-sm hover:border-primary/50 transition-colors duration-300 group flex flex-col">
                                 <CardHeader>
                                     <CardTitle className="truncate group-hover:text-primary">{t.name}</CardTitle>
                                     <CardDescription>Created by {t.creator_name}</CardDescription>
                                 </CardHeader>
-                                <CardContent className="space-y-4 text-sm">
+                                <CardContent className="flex-grow space-y-4 text-sm">
                                     <div className="flex items-center justify-between text-muted-foreground">
                                         <div className="flex items-center gap-2"><Users className="h-4 w-4"/><span>{t.participant_count} participants</span></div>
                                         <span className={cn('px-2 py-1 text-xs font-semibold rounded-full', t.status === 'pending' ? 'bg-yellow-900/50 text-yellow-400' : 'bg-green-900/50 text-green-400')}>
                                             {t.status.replace('_', ' ')}
                                         </span>
                                     </div>
-                                    <Button className="w-full" variant="secondary" onClick={() => router.push(`/tournaments/${t.id}`)}>View Lobby</Button>
                                 </CardContent>
+                                <div className="p-6 pt-0">
+                                     <Button className="w-full transition-transform group-hover:scale-105" variant="secondary" onClick={() => router.push(`/tournaments/${t.id}`)}>View Lobby</Button>
+                                </div>
                             </Card>
                         ))}
                     </div>
                 ) : (
-                    <div className="text-center text-muted-foreground py-10 border-2 border-dashed rounded-lg">
+                    <div className="text-center text-muted-foreground py-10 border-2 border-dashed rounded-lg bg-card/30">
                         <Trophy className="mx-auto h-12 w-12" />
                         <h3 className="mt-2 text-sm font-semibold">No active tournaments</h3>
                         <p className="mt-1 text-sm">Why not start one?</p>

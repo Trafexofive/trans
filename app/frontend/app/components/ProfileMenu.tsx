@@ -1,63 +1,75 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '../contexts/AuthContext';
-import DropdownMenu from './DropdownMenu';
+import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/Button";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { LogOut, Settings, UserCircle } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { getAvatarSrc } from "@/lib/utils";
 
-/**
- * The specific profile dropdown menu for the authenticated user.
- * - Uses the generic DropdownMenu for its open/close behavior.
- * - Pulls the authenticated user's data from AuthContext to display their name
- *   and provide a dynamic link to their own profile.
- * - Renders the user's avatar as the trigger for the dropdown.
- * - Contains navigation links to key user-specific pages and the logout function.
- */
 export default function ProfileMenu() {
-  const { user, logout } = useAuth();
-  const router = useRouter();
+    const { user, logout } = useAuth();
+    const router = useRouter();
 
-  // If there is no user, this component should not render anything.
-  if (!user) {
-    return null;
-  }
+    if (!user) return null;
 
-  // Handles the logout process and redirects the user to the login page.
-  const handleLogout = () => {
-    logout();
-    router.push('/login');
-  };
+    const handleLogout = () => {
+        logout();
+        router.push("/login");
+    };
 
-  // The trigger component is the user's avatar, which opens the dropdown on click.
-  const trigger = (
-    <div className="user-avatar-container">
-      <img
-        src={user.avatar || '/avatars/default.png'}
-        alt="Profile Avatar"
-        className="user-avatar-image"
-        // Fallback for broken avatar links
-        onError={(e) => { e.currentTarget.src = '/avatars/default.png'; }}
-      />
-      <div className="status-indicator status-online"></div>
-    </div>
-  );
-
-  return (
-    <DropdownMenu trigger={trigger}>
-      <div className="profile-info">
-        <p className="profile-name">{user.name}</p>
-        <p className="profile-status">Online</p>
-      </div>
-      <Link href={`/profile/${user.id}`} className="profile-menu-item">
-        View Profile
-      </Link>
-      <Link href="/settings" className="profile-menu-item">
-        Profile Settings
-      </Link>
-      <div className="profile-menu-separator"></div>
-      <div className="profile-menu-item" onClick={handleLogout}>
-        Logout
-      </div>
-    </DropdownMenu>
-  );
+    return (
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button
+                    variant="ghost"
+                    className="relative h-10 w-10 rounded-full"
+                >
+                    <img
+                        className="h-10 w-10 rounded-full object-cover"
+                        src={getAvatarSrc(user.avatar)}
+                        alt={user.name}
+                    />
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-56" align="end" forceMount>
+                <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col space-y-1">
+                        <p className="text-sm font-medium leading-none">
+                            {user.name}
+                        </p>
+                        <p className="text-xs leading-none text-muted-foreground">
+                            {user.email}
+                        </p>
+                    </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                    onClick={() => router.push(`/profile/${user.id}`)}
+                >
+                    <UserCircle className="mr-2 h-4 w-4" />
+                    <span>Profile</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push("/settings")}>
+                    <Settings className="mr-2 h-4 w-4" />
+                    <span>Settings</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                    onClick={handleLogout}
+                    className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>Log out</span>
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+        </DropdownMenu>
+    );
 }

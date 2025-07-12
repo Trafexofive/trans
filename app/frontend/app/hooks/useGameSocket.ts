@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface GameState {
     paddles: { [key: number]: { y: number } };
@@ -32,9 +32,16 @@ export const useGameSocket = (
     const [player2, setPlayer2] = useState<PlayerInfo | null>(null);
     const socketRef = useRef<WebSocket | null>(null);
 
+    // This effect handles the creation and cleanup of the WebSocket connection.
     useEffect(() => {
         if (!accessToken) {
-            setStatus(GameStatus.Disconnected);
+            setStatus(GameStatus.Error);
+            setErrorMessage("Authentication token not available.");
+            return;
+        }
+
+        // Prevent creating a new socket if one is already open or connecting.
+        if (socketRef.current && socketRef.current.readyState < 2) {
             return;
         }
 
@@ -51,9 +58,7 @@ export const useGameSocket = (
         socketRef.current = socket;
         setStatus(GameStatus.Connecting);
 
-        socket.onopen = () => {
-            setStatus(GameStatus.Waiting);
-        };
+        socket.onopen = () => setStatus(GameStatus.Waiting);
 
         socket.onmessage = (event) => {
             const message = JSON.parse(event.data);
@@ -73,12 +78,8 @@ export const useGameSocket = (
                     socket.close();
                     break;
                 case "queue_timeout":
-                    setErrorMessage("Matchmaking timed out. Please try again.");
-                    setStatus(GameStatus.Error);
-                    socket.close();
-                    break;
                 case "error":
-                    setErrorMessage(message.payload);
+                    setErrorMessage(message.payload || "An error occurred.");
                     setStatus(GameStatus.Error);
                     socket.close();
                     break;
@@ -86,15 +87,9 @@ export const useGameSocket = (
         };
 
         socket.onclose = () => {
-            setStatus((currentStatus) => {
-                if (
-                    currentStatus !== GameStatus.GameOver &&
-                    currentStatus !== GameStatus.Error
-                ) {
-                    return GameStatus.Disconnected;
-                }
-                return currentStatus;
-            });
+            if (status !== GameStatus.GameOver && status !== GameStatus.Error) {
+                setStatus(GameStatus.Disconnected);
+            }
         };
 
         socket.onerror = (err) => {
@@ -103,23 +98,22 @@ export const useGameSocket = (
             setStatus(GameStatus.Error);
         };
 
+        // Cleanup function to close the socket when the component unmounts or dependencies change
         return () => {
-            if (
-                socketRef.current?.readyState === WebSocket.OPEN ||
-                socketRef.current?.readyState === WebSocket.CONNECTING
-            ) {
+            if (socketRef.current) {
                 socketRef.current.close();
+                socketRef.current = null;
             }
         };
-    }, [accessToken, matchId]);
+    }, [accessToken, matchId]); // Dependencies ensure this effect re-runs only if token or matchId changes
 
-    const movePaddle = (y: number) => {
+    const movePaddle = useCallback((y: number) => {
         if (socketRef.current?.readyState === WebSocket.OPEN) {
             const PADDLE_HEIGHT = 100;
             const CANVAS_HEIGHT = 600;
             const clampedY = Math.max(
                 0,
-                Math.min(y, CANVAS_HEIGHT - PADDLE_HEIGHT),
+                Math.min(y - PADDLE_HEIGHT / 2, CANVAS_HEIGHT - PADDLE_HEIGHT),
             );
             socketRef.current.send(
                 JSON.stringify({
@@ -128,7 +122,7 @@ export const useGameSocket = (
                 }),
             );
         }
-    };
+    }, []);
 
     return {
         status,

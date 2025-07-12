@@ -22,6 +22,7 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog";
 import { Edit, Loader2 } from "lucide-react";
+import { getAvatarSrc } from "@/lib/utils"; // <<< IMPORT CENTRALIZED HELPER
 
 export default function SettingsPage() {
     const { user, accessToken, refreshUserData, logout } = useAuth();
@@ -39,9 +40,7 @@ export default function SettingsPage() {
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
     useEffect(() => {
-        if (user) {
-            setName(user.name);
-        }
+        if (user) setName(user.name);
     }, [user]);
 
     const handleProfileSubmit = async (e: React.FormEvent) => {
@@ -74,13 +73,11 @@ export default function SettingsPage() {
     ) => {
         const file = event.target.files?.[0];
         if (!file || !accessToken) return;
-
         setIsUpdating(true);
         setUpdateError("");
         setUpdateSuccess("");
         const formData = new FormData();
         formData.append("file", file);
-
         try {
             const res = await fetch(`${API_BASE_URL}/api/users/me/avatar`, {
                 method: "POST",
@@ -125,17 +122,12 @@ export default function SettingsPage() {
         }
     };
 
-    const getAvatarSrc = () => {
-        if (!user?.avatar) return "/avatars/default.png";
-        if (user.avatar.startsWith("http")) return user.avatar;
-        return `${API_BASE_URL}${user.avatar}`;
-    };
-
     return (
-        <div className="container mx-auto max-w-2xl py-8 space-y-8">
-            <Card>
+        <div className="container mx-auto max-w-2xl py-8 space-y-8 animate-fade-in-up">
+            <h1 className="text-4xl font-bold tracking-tight">Settings</h1>
+            <Card className="bg-card/50 backdrop-blur-sm">
                 <CardHeader>
-                    <CardTitle className="text-2xl">Profile Settings</CardTitle>
+                    <CardTitle>Profile</CardTitle>
                     <CardDescription>
                         Update your display name and avatar.
                     </CardDescription>
@@ -147,7 +139,7 @@ export default function SettingsPage() {
                             onClick={() => fileInputRef.current?.click()}
                         >
                             <img
-                                src={getAvatarSrc()}
+                                src={getAvatarSrc(user?.avatar)}
                                 alt="User Avatar"
                                 className="w-24 h-24 rounded-full object-cover border-2 border-primary"
                             />
@@ -207,13 +199,13 @@ export default function SettingsPage() {
                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving...
                                     </>
                                 )
-                                : "Save Name"}
+                                : "Save Changes"}
                         </Button>
                     </form>
                 </CardContent>
             </Card>
 
-            <Card className="border-destructive">
+            <Card className="border-destructive/50 bg-destructive/10 backdrop-blur-sm">
                 <CardHeader>
                     <CardTitle className="text-destructive">
                         Danger Zone
@@ -222,6 +214,7 @@ export default function SettingsPage() {
                 <CardContent>
                     <p className="text-sm text-muted-foreground">
                         Permanently delete your account and all associated data.
+                        This action cannot be undone.
                     </p>
                 </CardContent>
                 <CardFooter>

@@ -115,21 +115,21 @@ const TournamentModel = {
 
     async match_create_bulk(db, tournament_id, matches) {
         try {
-            const stmt = db.prepare(`INSERT INTO matches (tournament_id, round_number, player1_id, player2_id, status) VALUES (?, ?, ?, ?, ?)`);
-            const insert = db.transaction(() => {
+            const stmt = db.prepare(`INSERT INTO matches (tournament_id, round_number, player1_id, player2_id, status, winner_id) VALUES (?, ?, ?, ?, ?, ?)`);
+            const insertTx = db.transaction(() => {
                 for (const match of matches) {
-                    const status = match.player2 ? 'pending' : 'completed';
-                    const winner_id = match.player2 ? null : match.player1.id;
-                    stmt.run(tournament_id, match.round, match.player1.id, match.player2?.id, status);
-                    if (!match.player2) {
-                        db.prepare(`UPDATE matches SET winner_id = ? WHERE id = (SELECT last_insert_rowid())`).run(winner_id);
-                    }
+                    const isBye = !match.player2;
+                    const status = isBye ? 'completed' : 'pending';
+                    const winner_id = isBye ? match.player1.id : null;
+                    stmt.run(tournament_id, match.round, match.player1.id, match.player2?.id, status, winner_id);
                 }
             });
-            insert();
-            await this.checkAndAdvanceTournament(db, tournament_id); // Check immediately for byes
+            insertTx();
+            // After creating a round, immediately check if it can be advanced (handles rounds with only byes)
+            await this.checkAndAdvanceTournament(db, tournament_id);
             return { success: true, code: 201, result: "Matches created" };
         } catch (err) {
+            console.error("Error in match_create_bulk:", err.message);
             return { success: false, code: 500, result: err.message };
         }
     },
@@ -154,13 +154,31 @@ const TournamentModel = {
         }
     },
 
+    async tournament_get_single_match(db, match_id) {
+        try {
+            const stmt = db.prepare(`SELECT * FROM matches WHERE id = ?`);
+            const res = await stmt.get(match_id);
+            return res ? { success: true, code: 200, result: res } : { success: false, code: 404, result: "Match not found" };
+        } catch (err) {
+            return { success: false, code: 500, result: err.message };
+        }
+    },
+
     async match_update_winner(db, match_id, winner_id) {
         try {
-            const { tournament_id } = db.prepare('SELECT tournament_id FROM matches WHERE id = ?').get(match_id);
-            db.prepare(`UPDATE matches SET winner_id = ?, status = 'completed' WHERE id = ? AND status != 'completed'`).run(winner_id, match_id);
+            const match = await this.tournament_get_single_match(db, match_id);
+            if (!match.success || match.result.status === 'completed') {
+                return { success: true, code: 200, result: "Match already completed or not found." };
+            }
+            
+            const tournament_id = match.result.tournament_id;
+            const updateStmt = db.prepare(`UPDATE matches SET winner_id = ?, status = 'completed' WHERE id = ?`);
+            updateStmt.run(winner_id, match_id);
+
             await this.checkAndAdvanceTournament(db, tournament_id);
             return { success: true, code: 200, result: `Match ${match_id} updated.` };
         } catch (err) {
+            console.error("Error in match_update_winner:", err.message);
             return { success: false, code: 500, result: err.message };
         }
     },
@@ -177,24 +195,27 @@ const TournamentModel = {
         if (isRoundComplete) {
             const winners = latestRoundMatches.map(m => m.winner_id).filter(id => id !== null);
 
-            if (winners.length === 1 && latestRoundMatches.length === 1) {
+            if (winners.length === 1 && latestRoundMatches.length >= 1) {
                 await this.tournament_update_status(db, tournament_id, 'completed');
                 console.log(`Tournament ${tournament_id} completed. Winner is user ${winners[0]}.`);
                 return;
             } 
             
-            if (winners.length >= 1) {
+            if (winners.length > 1) {
+                const shuffledWinners = winners.sort(() => 0.5 - Math.random());
                 const newMatches = [];
                 const nextRoundNum = latestRoundNumber + 1;
-                for (let i = 0; i < winners.length; i += 2) {
-                    const p1_id = winners[i];
-                    const p2_id = winners[i+1] || null;
-                    newMatches.push({ round: nextRoundNum, player1: {id: p1_id}, player2: p2_id ? {id: p2_id} : null });
+                for (let i = 0; i < shuffledWinners.length; i += 2) {
+                    newMatches.push({ 
+                        round: nextRoundNum, 
+                        player1: { id: shuffledWinners[i] }, 
+                        player2: shuffledWinners[i+1] ? { id: shuffledWinners[i+1] } : null 
+                    });
                 }
 
                 if (newMatches.length > 0) {
+                    console.log(`Advancing tournament ${tournament_id} to round ${nextRoundNum}.`);
                     await this.match_create_bulk(db, tournament_id, newMatches);
-                    console.log(`Advanced tournament ${tournament_id} to round ${nextRoundNum}.`);
                 }
             }
         }

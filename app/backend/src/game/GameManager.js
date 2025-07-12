@@ -9,10 +9,10 @@ class GameManager {
     constructor(db) {
         this.db = db;
         this.publicQueue = [];
-        this.pendingGames = new Map();
+        this.pendingGames = new Map(); // Stores players waiting for a tournament match
         this.activeGames = new Map();
         this.socketToPlayerId = new Map();
-        console.log("GameManager initialized with queue timeout mechanism.");
+        console.log("GameManager initialized with queue and tournament handling.");
         this.startQueueCleanup();
     }
 
@@ -59,7 +59,7 @@ class GameManager {
             player.socket.send(JSON.stringify({ type: 'error', payload: 'You are already in the matchmaking queue.' }));
             return;
         }
-        console.log(`Player ${player.name} (ID: ${player.id}) added to queue.`);
+        console.log(`Player ${player.name} (ID: ${player.id}) added to public queue.`);
         this.publicQueue.push({ player, joinedAt: Date.now() });
         this._tryStartPublicGame();
     }
@@ -72,18 +72,17 @@ class GameManager {
             const player2 = entry2.player;
 
             if (!player1 || !player2 || player1.id === player2.id) {
-                console.error("Matchmaking integrity error: Attempted to match a player with themselves or invalid players.");
+                console.error("Matchmaking integrity error: Invalid players.");
                 if(player1) this.publicQueue.unshift(entry1);
                 if(player2) this.publicQueue.unshift(entry2);
                 return;
             }
 
-            console.log(`Matchmaking success: Starting game between ${player1.name} (ID: ${player1.id}) and ${player2.name} (ID: ${player2.id})`);
-
+            console.log(`Public Match: ${player1.name} vs ${player2.name}`);
             const onGameOver = async (winnerId, loserId) => {
                 await UserModel.user_add_win(this.db, winnerId);
                 await UserModel.user_add_loss(this.db, loserId);
-                console.log(`Game over. Winner: ${winnerId}, Loser: ${loserId}. Stats updated.`);
+                console.log(`Public game over. Winner: ${winnerId}, Loser: ${loserId}. Stats updated.`);
             };
             
             const game = new Game(player1, player2, onGameOver);
@@ -93,37 +92,74 @@ class GameManager {
         }
     }
     
-    handlePrivateMatchJoin(player, matchId) {
-        // This logic remains deferred as per the "Baseline" operation focus.
-        console.log(`Private match join attempt for ${matchId} - functionality deferred.`);
-        player.socket.send(JSON.stringify({ type: 'error', payload: 'Private matches are not yet enabled.' }));
+    async handlePrivateMatchJoin(player, matchId) {
+        const matchDetails = await TournamentModel.tournament_get_single_match(this.db, matchId);
+        if (!matchDetails.success || !matchDetails.result) {
+            return player.socket.send(JSON.stringify({ type: 'error', payload: 'Tournament match not found.' }));
+        }
+
+        const match = matchDetails.result;
+        if (match.status !== 'pending') {
+            return player.socket.send(JSON.stringify({ type: 'error', payload: `Match is already ${match.status}.` }));
+        }
+        if (player.id !== match.player1_id && player.id !== match.player2_id) {
+            return player.socket.send(JSON.stringify({ type: 'error', payload: 'You are not a participant in this match.' }));
+        }
+
+        if (!this.pendingGames.has(matchId)) {
+            this.pendingGames.set(matchId, [player]);
+            player.socket.send(JSON.stringify({ type: 'waitingForOpponent' }));
+            console.log(`Tournament Match ${matchId}: ${player.name} is waiting.`);
+        } else {
+            const waitingPlayer = this.pendingGames.get(matchId)[0];
+            if (waitingPlayer.id === player.id) return; // Player reconnected, do nothing.
+
+            const player1 = waitingPlayer;
+            const player2 = player;
+            this.pendingGames.delete(matchId);
+
+            console.log(`Tournament Match ${matchId}: ${player1.name} vs ${player2.name}. Starting.`);
+
+            const onGameOver = async (winnerId, loserId) => {
+                await TournamentModel.match_update_winner(this.db, matchId, winnerId);
+                await UserModel.user_add_win(this.db, winnerId);
+                await UserModel.user_add_loss(this.db, loserId);
+                console.log(`Tournament match ${matchId} over. Winner: ${winnerId}. Tournament advancing.`);
+            };
+            
+            const game = new Game(player1, player2, onGameOver);
+            this.activeGames.set(player1.socket, game);
+            this.activeGames.set(player2.socket, game);
+            game.start();
+        }
     }
 
     removePlayer(socket) {
         const playerId = this.socketToPlayerId.get(socket);
         if (!playerId) return;
 
+        // Remove from public queue if present
         const queueIndex = this.publicQueue.findIndex(entry => entry.player.id === playerId);
         if (queueIndex > -1) {
             this.publicQueue.splice(queueIndex, 1);
+            console.log(`Player ${playerId} removed from public queue.`);
         }
 
+        // Forfeit any active game
         const game = this.activeGames.get(socket);
         if (game && !game.isOver) {
             const opponent = game.player1.socket === socket ? game.player2 : game.player1;
-            if (opponent) {
-                game.stop(opponent.id);
-            }
+            game.stop(opponent.id); // Forfeit to the opponent
+            console.log(`Player ${playerId} disconnected. Forfeiting game.`);
         }
         
+        // Cleanup maps
         if (game) {
             this.activeGames.delete(game.player1.socket);
-            if (game.player2) {
-                this.activeGames.delete(game.player2.socket);
-            }
+            if (game.player2) this.activeGames.delete(game.player2.socket);
         }
-        
         this.socketToPlayerId.delete(socket);
+        
         console.log(`Player ${playerId} connection closed and cleaned up from all game activities.`);
     }
     

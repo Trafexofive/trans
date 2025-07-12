@@ -62,6 +62,7 @@ interface AuthContextType {
     isLoading: boolean;
     friends: Friend[];
     friendIds: Set<number>;
+    blockedUserIds: Set<number>;
     pendingRequests: FriendRequest[];
     requestStatuses: FriendRequestStatus;
     chatPartners: ChatPartner[];
@@ -90,6 +91,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [isLoading, setIsLoading] = useState(true);
     const [friends, setFriends] = useState<Friend[]>([]);
     const [friendIds, setFriendIds] = useState<Set<number>>(new Set());
+    const [blockedUserIds, setBlockedUserIds] = useState<Set<number>>(
+        new Set(),
+    ); // <<< NEW
     const [pendingRequests, setPendingRequests] = useState<FriendRequest[]>([]);
     const [requestStatuses, setRequestStatuses] = useState<FriendRequestStatus>(
         { sent: [], received: [] },
@@ -106,6 +110,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setAccessToken(null);
         setFriends([]);
         setFriendIds(new Set());
+        setBlockedUserIds(new Set()); 
         setPendingRequests([]);
         setRequestStatuses({ sent: [], received: [] });
         setChatPartners([]);
@@ -119,7 +124,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const fetchSocialData = useCallback(async (token: string) => {
         if (!API_BASE_URL) return;
         try {
-            const [friendsRes, reqsRes, statusesRes, partnersRes] =
+            const [friendsRes, reqsRes, statusesRes, partnersRes, blockedRes] = 
                 await Promise.all([
                     fetch(`${API_BASE_URL}/api/friendships`, {
                         headers: { "Authorization": `Bearer ${token}` },
@@ -133,13 +138,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     fetch(`${API_BASE_URL}/api/chat/`, {
                         headers: { "Authorization": `Bearer ${token}` },
                     }),
+                    fetch(`${API_BASE_URL}/api/friendships/blocked`, {
+                        headers: { "Authorization": `Bearer ${token}` },
+                    }), 
                 ]);
-            const [friendsData, reqsData, statusesData, partnersData] =
+            const [
+                friendsData,
+                reqsData,
+                statusesData,
+                partnersData,
+                blockedData,
+            ] = 
                 await Promise.all([
                     friendsRes.json(),
                     reqsRes.json(),
                     statusesRes.json(),
                     partnersRes.json(),
+                    blockedRes.json(), 
                 ]);
             setFriends(friendsData.success ? friendsData.result : []);
             setFriendIds(
@@ -154,6 +169,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     : { sent: [], received: [] },
             );
             setChatPartners(partnersData.success ? partnersData.result : []);
+            setBlockedUserIds(
+                blockedData.success ? new Set(blockedData.result) : new Set(),
+            ); 
         } catch (error) {
             console.error("Failed to fetch social data", error);
             logout();
@@ -211,11 +229,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             try {
                 const response = await fetch(url, fetchOptions);
                 if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({
-                        result: "An unknown error occurred",
-                    }));
                     throw new Error(
-                        errorData.result || `Action ${action} failed`,
+                        (await response.json()).result ||
+                            `Action ${action} failed`,
                     );
                 }
             } catch (error) {
@@ -283,9 +299,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     useEffect(() => {
         if (accessToken && userId && API_BASE_URL) {
             fetchSocialData(accessToken);
-            if (socketRef.current) {
-                socketRef.current.close();
-            }
+            if (socketRef.current) socketRef.current.close();
+
             const WS_URL = API_BASE_URL.replace(/^http/, "ws");
             const socket = new WebSocket(
                 `${WS_URL}/api/chat/socket?token=${accessToken}`,
@@ -294,41 +309,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
             socket.onmessage = (event) => {
                 const message = JSON.parse(event.data);
-                switch (message.type) {
-                    case "social_update":
-                        console.log(
-                            "Social update event received. Refreshing social data.",
+                if (message.type === "social_update") {
+                    fetchSocialData(accessToken);
+                } else {
+                    const partnerId = message.from === userId
+                        ? message.to
+                        : message.from;
+                    setChats((prev) =>
+                        new Map(prev).set(partnerId, [
+                            ...(prev.get(partnerId) || []),
+                            message,
+                        ])
+                    );
+                    if (
+                        message.from !== userId &&
+                        partnerId !== activeChatPartnerId.current
+                    ) {
+                        setUnreadFrom((prev) =>
+                            new Set(prev).add(message.from)
                         );
-                        fetchSocialData(accessToken);
-                        break;
-                    default: // Assumes a chat message
-                        const partnerId = message.from === userId
-                            ? message.to
-                            : message.from;
-                        setChats((prev) => {
-                            const newChats = new Map(prev);
-                            const currentMessages = newChats.get(partnerId) ||
-                                [];
-                            newChats.set(partnerId, [
-                                ...currentMessages,
-                                message,
-                            ]);
-                            return newChats;
-                        });
-                        if (
-                            message.from !== userId &&
-                            partnerId !== activeChatPartnerId.current
-                        ) {
-                            setUnreadFrom((prev) =>
-                                new Set(prev).add(message.from)
-                            );
-                        }
+                    }
                 }
             };
             return () => {
-                if (socketRef.current) {
-                    socketRef.current.close();
-                }
+                if (socketRef.current) socketRef.current.close();
             };
         }
     }, [accessToken, userId, fetchSocialData]);
@@ -352,9 +356,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         try {
             const response = await fetch(
                 `${API_BASE_URL}/api/chat/${partnerId}`,
-                {
-                    headers: { "Authorization": `Bearer ${accessToken}` },
-                },
+                { headers: { "Authorization": `Bearer ${accessToken}` } },
             );
             const data = await response.json();
             if (data.success && Array.isArray(data.result)) {
@@ -395,6 +397,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         isLoading,
         friends,
         friendIds,
+        blockedUserIds,
         pendingRequests,
         requestStatuses,
         chatPartners,
@@ -414,6 +417,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         isLoading,
         friends,
         friendIds,
+        blockedUserIds,
         pendingRequests,
         requestStatuses,
         chatPartners,

@@ -6,9 +6,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Gamepad2, MessageSquare, UserX } from "lucide-react";
+import { Gamepad2, MessageSquare, ShieldBan, UserX } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import { cn } from "@/lib/utils";
+import { cn, getAvatarSrc } from "@/lib/utils"; // <<< IMPORT CENTRALIZED HELPER
 
 const RenderChatMessage = memo(({ content }: { content: string }) => {
     const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
@@ -33,10 +33,7 @@ const RenderChatMessage = memo(({ content }: { content: string }) => {
         lastIndex = match.index + fullMatch.length;
     }
 
-    if (lastIndex < content.length) {
-        parts.push(content.substring(lastIndex));
-    }
-
+    if (lastIndex < content.length) parts.push(content.substring(lastIndex));
     return (
         <div className="text-sm break-words">
             {parts.map((part, i) => <span key={i}>{part}</span>)}
@@ -61,6 +58,7 @@ export default function ChatPage() {
         friendAction,
         unreadFrom,
         clearUnreadMessages,
+        blockedUserIds,
     } = useAuth();
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -75,22 +73,17 @@ export default function ChatPage() {
     }, [router]);
 
     useEffect(() => {
-        const partnerId = searchParams.get("with");
-        const currentPartnerId = activePartner?.id;
-        if (partnerId) {
-            const partner = chatPartners.find((p) =>
-                p.id === parseInt(partnerId, 10)
-            );
-            if (partner && currentPartnerId !== partner.id) {
-                setActivePartner(partner);
-                loadChatHistory(partner.id);
+        const partnerIdStr = searchParams.get("with");
+        if (partnerIdStr) {
+            const partnerId = parseInt(partnerIdStr, 10);
+            if (activePartner?.id !== partnerId) {
+                const partner = chatPartners.find((p) => p.id === partnerId);
+                if (partner) {
+                    setActivePartner(partner);
+                    loadChatHistory(partner.id);
+                    clearUnreadMessages(partner.id);
+                }
             }
-            if (partner) {
-                clearUnreadMessages(partner.id);
-            }
-        } else if (currentPartnerId) {
-            // If no partner in URL, clear the active one
-            setActivePartner(null);
         }
     }, [
         searchParams,
@@ -111,11 +104,14 @@ export default function ChatPage() {
         setNewMessage("");
     };
 
+    const isBlocked = activePartner
+        ? blockedUserIds.has(activePartner.id)
+        : false;
     const activeChatMessages = (activePartner && chats.get(activePartner.id)) ||
         [];
 
     return (
-        <Card className="w-full h-[calc(100vh-8rem)] flex shadow-2xl">
+        <Card className="w-full h-full flex shadow-2xl rounded-none border-none">
             <div className="w-1/3 min-w-[300px] border-r border-border flex flex-col">
                 <div className="p-4 border-b border-border">
                     <h2 className="text-xl font-semibold">Conversations</h2>
@@ -132,9 +128,9 @@ export default function ChatPage() {
                             )}
                         >
                             <img
-                                src={partner.avatar || "/avatars/default.png"}
+                                src={getAvatarSrc(partner.avatar)}
                                 alt={partner.name}
-                                className="h-10 w-10 rounded-full"
+                                className="h-10 w-10 rounded-full object-cover"
                             />
                             <span className="font-medium flex-1 truncate">
                                 {partner.name}
@@ -146,7 +142,6 @@ export default function ChatPage() {
                     ))}
                 </div>
             </div>
-
             <div className="w-2/3 flex flex-col bg-muted/20">
                 {activePartner
                     ? (
@@ -157,10 +152,9 @@ export default function ChatPage() {
                                     className="flex items-center gap-3 hover:underline"
                                 >
                                     <img
-                                        src={activePartner.avatar ||
-                                            "/avatars/default.png"}
+                                        src={getAvatarSrc(activePartner.avatar)}
                                         alt={activePartner.name}
-                                        className="h-10 w-10 rounded-full"
+                                        className="h-10 w-10 rounded-full object-cover"
                                     />
                                     <h2 className="text-xl font-semibold">
                                         {activePartner.name}
@@ -194,9 +188,9 @@ export default function ChatPage() {
                                 </div>
                             </div>
                             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                                {activeChatMessages.map((msg) => (
+                                {activeChatMessages.map((msg, index) => (
                                     <div
-                                        key={msg.id}
+                                        key={msg.id || `msg-${index}`}
                                         className={cn(
                                             "flex items-end gap-2",
                                             msg.from === user?.id
@@ -227,20 +221,29 @@ export default function ChatPage() {
                                 ))}
                                 <div ref={messagesEndRef} />
                             </div>
-                            <form
-                                onSubmit={handleSendMessage}
-                                className="p-4 border-t border-border flex items-center gap-4 bg-card"
-                            >
-                                <Input
-                                    value={newMessage}
-                                    onChange={(e) =>
-                                        setNewMessage(e.target.value)}
-                                    placeholder="Type a message..."
-                                    className="flex-1"
-                                    autoComplete="off"
-                                />
-                                <Button type="submit">Send</Button>
-                            </form>
+                            {isBlocked
+                                ? (
+                                    <div className="p-4 border-t border-border flex items-center justify-center gap-2 bg-destructive/10 text-destructive-foreground">
+                                        <ShieldBan className="h-5 w-5" />
+                                        <span>You have blocked this user.</span>
+                                    </div>
+                                )
+                                : (
+                                    <form
+                                        onSubmit={handleSendMessage}
+                                        className="p-4 border-t border-border flex items-center gap-4 bg-card"
+                                    >
+                                        <Input
+                                            value={newMessage}
+                                            onChange={(e) =>
+                                                setNewMessage(e.target.value)}
+                                            placeholder="Type a message..."
+                                            className="flex-1"
+                                            autoComplete="off"
+                                        />
+                                        <Button type="submit">Send</Button>
+                                    </form>
+                                )}
                         </>
                     )
                     : (

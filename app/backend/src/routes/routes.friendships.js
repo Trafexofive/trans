@@ -8,9 +8,6 @@ async function FriendshipRoutes(fastify, options) {
     fastify.get("/user/:id", auth, FriendshipCtrl.getFriends);
     fastify.get("/ids", auth, FriendshipCtrl.getFriendIds);
 
-    // --- Remove a Friend ---
-    fastify.delete("/:friend_id", auth, FriendshipCtrl.removeFriend);
-
     // --- Friend Request Workflow ---
     fastify.get("/requests", auth, FriendshipCtrl.getPendingRequests);
     fastify.get(
@@ -36,9 +33,13 @@ async function FriendshipRoutes(fastify, options) {
     );
 
     // --- Blocking Workflow ---
+    fastify.get("/blocked", auth, FriendshipCtrl.getBlockedUsers); // <<< NEW
+    fastify.get("/block/:id", auth, FriendshipCtrl.getBlockStatus);
     fastify.post("/block", auth, FriendshipCtrl.blockUser);
     fastify.delete("/block/:blocked_id", auth, FriendshipCtrl.unblockUser);
-    fastify.get("/block/:id", auth, FriendshipCtrl.getBlockStatus);
+
+    // --- Remove a Friend (Keep last for parameter specificity) ---
+    fastify.delete("/:friend_id", auth, FriendshipCtrl.removeFriend);
 }
 
 module.exports = FriendshipRoutes;

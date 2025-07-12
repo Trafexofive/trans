@@ -4,8 +4,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/Button";
+import {
+    Sheet,
+    SheetClose,
+    SheetContent,
+    SheetTrigger,
+} from "@/components/ui/sheet"; // Import Sheet components
 import { FriendRequestsMenu } from "./FriendRequestsMenu";
-import { LogOut, Swords } from "lucide-react";
+import ProfileMenu from "./ProfileMenu"; // Import the new ProfileMenu
+import { LogOut, Menu, Settings, Swords, UserCircle } from "lucide-react"; // Import new icons
 import { cn } from "@/lib/utils";
 
 export default function AppNavbar() {
@@ -23,16 +30,18 @@ export default function AppNavbar() {
     return (
         <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div className="container flex h-14 max-w-screen-2xl items-center">
-                <nav className="flex items-center gap-6 text-sm">
-                    <Link
-                        href="/dashboard"
-                        className="mr-4 flex items-center gap-2"
-                    >
-                        <Swords className="h-6 w-6" />
-                        <span className="font-bold sm:inline-block">
-                            TRANSCENDENCE
-                        </span>
-                    </Link>
+                <Link
+                    href="/dashboard"
+                    className="mr-6 flex items-center gap-2"
+                >
+                    <Swords className="h-6 w-6 text-primary" />
+                    <span className="hidden font-bold sm:inline-block">
+                        TRANSCENDENCE
+                    </span>
+                </Link>
+
+                {/* Desktop Navigation */}
+                <nav className="hidden items-center gap-6 text-sm md:flex">
                     {navLinks.map((link) => (
                         <Link
                             key={link.href}
@@ -48,30 +57,81 @@ export default function AppNavbar() {
                         </Link>
                     ))}
                 </nav>
-                <div className="flex flex-1 items-center justify-end gap-4">
+
+                <div className="flex flex-1 items-center justify-end gap-2">
                     {user
                         ? (
                             <>
                                 <FriendRequestsMenu />
-                                <Button variant="ghost" asChild>
-                                    <Link href={`/profile/${user.id}`}>
-                                        {user.name}
-                                    </Link>
-                                </Button>
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={logout}
-                                >
-                                    <LogOut className="mr-2 h-4 w-4" /> Logout
-                                </Button>
+                                <div className="hidden md:block">
+                                    <ProfileMenu />
+                                </div>
                             </>
                         )
                         : (
-                            <Button asChild>
+                            <Button asChild size="sm">
                                 <Link href="/login">Login</Link>
                             </Button>
                         )}
+
+                    {/* Mobile Navigation Trigger */}
+                    <div className="md:hidden">
+                        <Sheet>
+                            <SheetTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                    <Menu className="h-5 w-5" />
+                                </Button>
+                            </SheetTrigger>
+                            <SheetContent side="right" className="w-[240px]">
+                                <nav className="flex flex-col gap-4 mt-8">
+                                    {navLinks.map((link) => (
+                                        <SheetClose asChild key={link.href}>
+                                            <Link
+                                                href={link.href}
+                                                className={cn(
+                                                    "text-lg",
+                                                    pathname.startsWith(
+                                                            link.href,
+                                                        )
+                                                        ? "text-primary"
+                                                        : "text-muted-foreground",
+                                                )}
+                                            >
+                                                {link.label}
+                                            </Link>
+                                        </SheetClose>
+                                    ))}
+                                </nav>
+                                {user && (
+                                    <div className="mt-8 border-t pt-4">
+                                        <SheetClose asChild>
+                                            <Link
+                                                href={`/profile/${user.id}`}
+                                                className="flex items-center gap-3 py-2 text-lg text-muted-foreground"
+                                            >
+                                                <UserCircle className="h-5 w-5" />Profile
+                                            </Link>
+                                        </SheetClose>
+                                        <SheetClose asChild>
+                                            <Link
+                                                href="/settings"
+                                                className="flex items-center gap-3 py-2 text-lg text-muted-foreground"
+                                            >
+                                                <Settings className="h-5 w-5" />Settings
+                                            </Link>
+                                        </SheetClose>
+                                        <Button
+                                            variant="ghost"
+                                            onClick={logout}
+                                            className="w-full justify-start px-0 py-2 text-lg text-destructive hover:text-destructive"
+                                        >
+                                            <LogOut className="mr-3 h-5 w-5" />Logout
+                                        </Button>
+                                    </div>
+                                )}
+                            </SheetContent>
+                        </Sheet>
+                    </div>
                 </div>
             </div>
         </header>
