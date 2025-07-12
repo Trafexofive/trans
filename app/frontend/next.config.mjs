@@ -1,35 +1,28 @@
-import { PHASE_DEVELOPMENT_SERVER, PHASE_PRODUCTION_BUILD } from 'next/constants.js';
-
-/**
- * @param {string} phase The current Next.js phase
- * @returns {import('next').NextConfig}
- */
-const nextConfig = (phase) => {
-  // Base configuration applicable to all environments
-  const config = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
     reactStrictMode: true,
-  };
-
-  // Apply development-specific settings
-  if (phase === PHASE_DEVELOPMENT_SERVER) {
-    Object.assign(config, {
-      devIndicators: {
-        allowedDevOrigins: [
-          "https://trans.clevo.ddnsgeek.com",
-          "http://localhost:8080",
-        ],
-      },
-    });
-  }
-
-  // Apply production-specific settings
-  if (phase === PHASE_PRODUCTION_BUILD) {
-    Object.assign(config, {
-      output: 'standalone',
-    });
-  }
-
-  return config;
 };
+
+// --- DEVELOPMENT-ONLY SETTINGS ---
+// These are applied only when you explicitly set the environment to 'development'.
+if (process.env.NODE_ENV === "development") {
+    console.log(
+        "✅ Running in development mode, applying dev-specific Next.js config.",
+    );
+    nextConfig.devIndicators = {
+        // This silences the cross-origin warning when hosting the dev server on a custom domain.
+        allowedDevOrigins: [
+            "https://trans.clevo.ddnsgeek.com",
+            "http://localhost:8080",
+        ],
+    };
+}
+
+// --- PRODUCTION-ONLY SETTINGS ---
+// The 'standalone' output is essential for creating an optimized Docker image for production.
+if (process.env.NODE_ENV === "production") {
+    console.log("📦 Running in production mode, setting output to standalone.");
+    nextConfig.output = "standalone";
+}
 
 export default nextConfig;
