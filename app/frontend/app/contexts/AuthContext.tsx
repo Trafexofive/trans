@@ -23,10 +23,12 @@ interface User {
     wins: number;
     loses: number;
 }
+
 interface DecodedToken {
     payload: User;
     exp: number;
 }
+
 interface ChatMessage {
     id: number;
     from: number;

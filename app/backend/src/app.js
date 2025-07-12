@@ -38,7 +38,7 @@ fastify.register(require("./plugins/plugins.auth"));
 fastify.register(require("@fastify/jwt"), { secret: process.env.JWT_KEY });
 fastify.register(require("@fastify/websocket"));
 fastify.register(require("@fastify/cors"), {
-    origin: process.env.CORS_ORIGIN || "http://localhost:8080",
+    origin: process.env.CORS_ORIGIN,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
 });

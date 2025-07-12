@@ -69,6 +69,7 @@ services:
       - PROMETHEUS_METRICS_PATH=/metrics # For Prometheus scraping
       - SWAGGER_HOST=0.0.0.0
       - SWAGGER_PORT=3000
+      - CORS_ORIGIN=${CORS_ORIGIN:-*}
     ports:
       - "${FASTIFY_HOST_PORT:-3000}:3000"
     restart: unless-stopped
