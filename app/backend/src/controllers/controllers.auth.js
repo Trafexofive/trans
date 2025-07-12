@@ -4,8 +4,10 @@ const TwofaModel = require("../models/models.two_fa");
 const bcrypt = require("bcrypt");
 const qrcode = require("qrcode");
 const speakeasy = require("speakeasy");
-const { gen_jwt_token } = require("../utils/utils.security");
+const { gen_jwt_token, check_and_sanitize } = require("../utils/utils.security");
 require("dotenv").config();
+
+
 
 const AuthCtl = {
     async Login(request, reply) {
@@ -45,10 +47,10 @@ const AuthCtl = {
         }
 
         //------- check if 2fa is activated:
-        const check_two_fa = await TwofaModel.two_fa_get_by_id(this.db, user.id)
+        const check_two_fa = await TwofaModel.two_fa_get_by_id(this.db, res.id)
         if (check_two_fa.success && check_two_fa.result.verified)
         {
-            const preAuthTokenPayload = { id: user.id, name: user.name, email: user.email, pre_auth: true };
+            const preAuthTokenPayload = { id: res.id, name: res.name, email: res.email, pre_auth: true };
             const pre_auth_token = gen_jwt_token(this, preAuthTokenPayload, '5m');
             return reply.status(202).send({
                 success: true,
