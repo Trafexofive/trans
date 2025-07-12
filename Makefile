@@ -195,10 +195,10 @@ prune: fclean clean-nodejs
 
 clean-nodejs:
 	@echo -e "$(YELLOW)Cleaning Externals...$(NC)"
-	@sudo rm -rf app/backend/node_modules
-	@sudo rm -rf app/frontend/node_modules
-	@sudo rm -rf app/frontend/package-lock.json
-	@sudo rm -rf app/frontend/.next
+	@rm -rf app/backend/node_modules
+	@rm -rf app/frontend/node_modules
+	@rm -rf app/frontend/package-lock.json
+	@rm -rf app/frontend/.next
 	# @sudo rm -rf app/backend/database.db
 	@echo -e "$(GREEN)Externals cleaned.$(NC)"
 
