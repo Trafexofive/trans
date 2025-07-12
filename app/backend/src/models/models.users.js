@@ -90,6 +90,7 @@ const UserModel = {
 
     async user_update_profile(db, user_id, { name, avatar }) {
         try {
+            // Build the query dynamically based on provided fields
             const fields = [];
             const values = [];
             if (name) {
@@ -100,18 +101,38 @@ const UserModel = {
                 fields.push("avatar = ?");
                 values.push(avatar);
             }
+            if (email) {
+                fields.push("email = ?");
+                values.push(email);
+            }
+            if (password) {
+                fields.push("password = ?");
+                hashed_password = await hash_password(password)
+                values.push(hashed_password);
+            }
             if (fields.length === 0) {
                 return { success: false, code: 400, result: "No fields to update." };
             }
-            const stmt = db.prepare(`UPDATE users SET ${fields.join(", ")} WHERE id = ?`);
+
+            const stmt = db.prepare(`
+                UPDATE users
+                SET ${fields.join(", ")}
+                WHERE id = ?
+            `);
             const result = await stmt.run(...values, user_id);
+
             if (result.changes === 0) {
                 return { success: false, code: 404, result: "User not found or no changes made." };
             }
+
             return { success: true, code: 200, result: "Profile updated successfully." };
-        } catch (err) {
-             if (err.code === "SQLITE_CONSTRAINT_UNIQUE") {
-                return { success: false, code: 409, result: "That name is already taken." };
+
+        }
+        catch (err)
+        {
+            if (err.code === "SQLITE_CONSTRAINT_UNIQUE")
+            {
+                return { success: false, code: 409, result: "name or email already taken" };
             }
             return { success: false, code: 500, result: err.message };
         }

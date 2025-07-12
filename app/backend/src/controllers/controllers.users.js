@@ -75,31 +75,43 @@ const UserCtrl = {
     },
 
     async CreateUser(request, reply) {
-        const { name, email, password } = request.body;
-        const errors = check_and_sanitize({ name, email, password });
-        if (errors.length !== 0) {
+        const rawUserData = request.body;
+        const { errors, sanitized, isValid } = check_and_sanitize(rawUserData);
+        
+        if (!isValid)
+        {
             return reply.status(400).send({
                 success: false,
-                result: errors.join(", "),
-            });
+                code: 400,
+                result: errors.join(", ")
+            })
         }
-        const res = await UserModel.user_create(this.db, name, email, password);
+        
+        const res = await UserModel.user_create(
+            this.db,
+            sanitized.name,
+            sanitized.email,
+            sanitized.password
+        )
+
         reply.status(res.code).send(res);
     },
 
     async UpdateMyProfile(request, reply) {
         const userId = request.user.payload.id;
-        const { name } = request.body;
-        if (!name) {
-            return reply.code(400).send({
+        const rawUserData = request.body;
+        const { errors, sanitized, isValid } = check_and_sanitize(rawUserData);
+        
+        if (!isValid)
+        {
+            return reply.status(400).send({
                 success: false,
-                result: "Name must be provided.",
-            });
+                code: 400,
+                result: errors.join(", ")
+            })
         }
-        const res = await UserModel.user_update_profile(this.db, userId, { name });
-        if (res.success) {
-            notifyUsers(this.activeConnections, [userId]);
-        }
+
+        const res = await UserModel.user_update_profile(this.db, userId, sanitized);
         reply.status(res.code).send(res);
     },
 
