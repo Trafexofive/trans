@@ -128,10 +128,8 @@ const AuthCtl = {
     },
 
     async TwofaCreate(request, reply) {
-        const authHeader = request.headers.authorization;
-        const token = authHeader.split(" ")[1];
-        const decoded = await request.jwtVerify(token);
-        const payload = decoded.payload;
+        
+        const payload = request.user;
 
         const check_exist = await TwofaModel.two_fa_get_by_id(
             this.db,
@@ -150,7 +148,8 @@ const AuthCtl = {
         }
 
         const secret = speakeasy.generateSecret({
-            name: payload.email,
+            name: payload.name,
+            name: payload.email
         });
 
         const store_secret = await TwofaModel.two_fa_create(
