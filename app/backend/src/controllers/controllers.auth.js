@@ -179,53 +179,43 @@ const AuthCtl = {
     },
 
     async TwofaDelete(request, reply) {
-        const authHeader = request.headers.authorization;
-        const token = authHeader.split(" ")[1];
-        const decoded = await request.jwtVerify(token);
-        const payload = decoded.payload;
-        const id = payload.id;
-
-        const res = await TwofaModel.two_fa_delete_by_id(this.db, id);
-        reply.status(res.code).send(res);
+        const payload = request.user.payload
+        const res = await TwofaModel.two_fa_delete_by_id(this.db, payload.id)
+        reply.status(res.code).send(res)
     },
 
     async TwofaVerify(request, reply) {
-        const authHeader = request.headers.authorization;
-        const access_token = authHeader.split(" ")[1];
-        const decoded = await request.jwtVerify(access_token);
-        const payload = decoded.payload;
-        const { token } = request.body;
-        const id = payload.id;
-
-        const res = await TwofaModel.two_fa_get_by_id(this.db, id);
-        if (res.success === false) {
-            return reply.status(res.code).send(res);
-        }
+        const payload = request.user.payload
+        const { token } = request.body
+        const res = await TwofaModel.two_fa_get_by_id(this.db, payload.id)
+        if (res.success === false)
+            return reply.status(res.code).send(res)
 
         const verified = speakeasy.totp.verify({
             secret: res.result.ascii,
-            encoding: "ascii",
+            encoding: 'ascii',
             token: token,
             window: 1, // for the current and the past 1 code
-        });
+        })
 
-        if (verified) {
-            const update = await TwofaModel.two_fa_verify_by_id(this.db, id);
-            if (update.success === false) {
-                return reply.status(update.code).send(update);
-            }
+        if (verified)
+        {
+            const update = await TwofaModel.two_fa_verify_by_id(this.db, payload.id)
+            if (update.success === false)
+                return reply.status(update.code).send(update)
 
             return reply.status(200).send({
                 success: true,
                 code: 200,
-                result: "2FA verified successfuly",
-            });
+                result: "2FA verified successfuly"
+            })
+
         }
         reply.status(400).send({
             success: false,
             code: 400,
-            result: "invalid 2FA token",
-        });
+            result: "invalid 2FA token"
+        })
     },
 };
 
