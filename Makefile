@@ -177,14 +177,15 @@ list-networks: ## List Docker networks
 # ======================================================================================
 
 clean:
-	@echo -e "$(YELLOW)Sanitizing workspace for $(COMPOSE_FILE)... Removing stopped containers and networks.$(NC)"
-	# @$(COMPOSE) down --remove-orphans --rmi 
+	@$(COMPOSE) down --volumes --remove-orphans 
+
+
+
 
 fclean: clean 
-	$(COMPOSE) down --volumes --remove-orphans --rmi 'none'; \
-	echo -e "$(GREEN)Compose-defined volumes removed.$(NC)"; \
+	@$(COMPOSE) down --volumes --remove-orphans --rmi 'all'
 
-prune: fclean
+prune: fclean clean-nodejs
 	docker system prune -af --volumes
 	docker builder prune -af
 	docker volume prune -af 
@@ -196,12 +197,13 @@ clean-nodejs:
 	@echo -e "$(YELLOW)Cleaning Externals...$(NC)"
 	@sudo rm -rf app/backend/node_modules
 	@sudo rm -rf app/frontend/node_modules
+	@sudo rm -rf app/frontend/package-lock.json
 	@sudo rm -rf app/frontend/.next
-	@sudo rm -rf app/backend/database.db
+	# @sudo rm -rf app/backend/database.db
 	@echo -e "$(GREEN)Externals cleaned.$(NC)"
 
 app: 
-	$(COMPOSE) up -d --build frontend && make logs
+	$(COMPOSE) up -d --build backend frontend && make logs
 	
 elk:
 	$(COMPOSE) up -d kibana

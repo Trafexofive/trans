@@ -1,74 +1,44 @@
 const FriendshipCtrl = require("../controllers/controllers.friendships");
 
 async function FriendshipRoutes(fastify, options) {
+    const auth = { onRequest: [fastify.auth] };
+
     // --- Get Friend Lists ---
-    fastify.get("/", { onRequest: [fastify.auth] }, FriendshipCtrl.getFriends);
-    fastify.get(
-        "/user/:id",
-        { onRequest: [fastify.auth] },
-        FriendshipCtrl.getFriends,
-    );
-    fastify.get(
-        "/ids",
-        { onRequest: [fastify.auth] },
-        FriendshipCtrl.getFriendIds,
-    );
+    fastify.get("/", auth, FriendshipCtrl.getFriends);
+    fastify.get("/user/:id", auth, FriendshipCtrl.getFriends);
+    fastify.get("/ids", auth, FriendshipCtrl.getFriendIds);
 
     // --- Remove a Friend ---
-    fastify.delete(
-        "/:friend_id",
-        { onRequest: [fastify.auth] },
-        FriendshipCtrl.removeFriend,
-    );
+    fastify.delete("/:friend_id", auth, FriendshipCtrl.removeFriend);
 
     // --- Friend Request Workflow ---
-    fastify.get(
-        "/requests",
-        { onRequest: [fastify.auth] },
-        FriendshipCtrl.getPendingRequests,
-    );
+    fastify.get("/requests", auth, FriendshipCtrl.getPendingRequests);
     fastify.get(
         "/requests/statuses",
-        { onRequest: [fastify.auth] },
+        auth,
         FriendshipCtrl.getAllRequestStatuses,
     );
-    fastify.post(
-        "/requests",
-        { onRequest: [fastify.auth] },
-        FriendshipCtrl.sendFriendRequest,
-    );
+    fastify.post("/requests", auth, FriendshipCtrl.sendFriendRequest);
     fastify.post(
         "/requests/:id/accept",
-        { onRequest: [fastify.auth] },
+        auth,
         FriendshipCtrl.acceptFriendRequest,
     );
     fastify.delete(
         "/requests/:id/decline",
-        { onRequest: [fastify.auth] },
+        auth,
         FriendshipCtrl.declineFriendRequest,
     );
     fastify.delete(
         "/requests/:id/cancel",
-        { onRequest: [fastify.auth] },
+        auth,
         FriendshipCtrl.cancelFriendRequest,
     );
 
     // --- Blocking Workflow ---
-    fastify.post(
-        "/block",
-        { onRequest: [fastify.auth] },
-        FriendshipCtrl.blockUser,
-    );
-    fastify.delete(
-        "/block/:blocked_id",
-        { onRequest: [fastify.auth] },
-        FriendshipCtrl.unblockUser,
-    );
-    fastify.get(
-        "/block/:id",
-        { onRequest: [fastify.auth] },
-        FriendshipCtrl.getBlockStatus,
-    );
+    fastify.post("/block", auth, FriendshipCtrl.blockUser);
+    fastify.delete("/block/:blocked_id", auth, FriendshipCtrl.unblockUser);
+    fastify.get("/block/:id", auth, FriendshipCtrl.getBlockStatus);
 }
 
 module.exports = FriendshipRoutes;

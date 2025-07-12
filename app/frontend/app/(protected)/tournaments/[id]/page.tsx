@@ -1,44 +1,19 @@
-"use client";
+'use client';
 
 import { useCallback, useEffect, useState } from "react";
-import { useAuth } from "@/app/contexts/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/Button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Loader2, Users, Trophy, Sword, Info, Crown } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 // Interfaces
-interface Participant {
-    id: number;
-    name: string;
-    avatar: string;
-}
-interface Match {
-    id: number;
-    player1_id: number;
-    player2_id: number | null;
-    player1_name: string;
-    player2_name: string | null;
-    winner_id: number | null;
-}
-interface TournamentDetails {
-    id: number;
-    name: string;
-    status: "pending" | "in_progress" | "completed";
-    creator_id: number;
-}
-interface FullTournament {
-    details: TournamentDetails;
-    participants: Participant[];
-    matches: Match[];
-}
-interface Friend {
-    id: number;
-    name: string;
-}
-
-interface TournamentPageProps {
-    params: {
-        id: string;
-    };
-}
+interface Participant { id: number; name: string; avatar: string; }
+interface Match { id: number; round_number: number; player1_id: number; player2_id: number | null; player1_name: string; player2_name: string | null; winner_id: number | null; status: string; }
+interface TournamentDetails { id: number; name: string; status: "pending" | "in_progress" | "completed"; creator_id: number; }
+interface FullTournament { details: TournamentDetails; participants: Participant[]; matches: Match[]; }
+interface TournamentPageProps { params: { id: string } }
 
 export default function TournamentDetailPage({ params }: TournamentPageProps) {
     const { user, accessToken } = useAuth();
@@ -47,242 +22,138 @@ export default function TournamentDetailPage({ params }: TournamentPageProps) {
     const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
     const [tournament, setTournament] = useState<FullTournament | null>(null);
-    const [friends, setFriends] = useState<Friend[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isActionLoading, setIsActionLoading] = useState(false);
     const [error, setError] = useState("");
 
     const fetchTournamentData = useCallback(async () => {
         if (!accessToken || !tournamentId) return;
         try {
-            const response = await fetch(
-                `${API_BASE_URL}/api/tournaments/${tournamentId}`,
-                {
-                    headers: { "Authorization": `Bearer ${accessToken}` },
-                },
-            );
-            if (!response.ok) {
-                throw new Error("Failed to fetch tournament data.");
-            }
+            const response = await fetch(`${API_BASE_URL}/api/tournaments/${tournamentId}`, { headers: { "Authorization": `Bearer ${accessToken}` } });
+            if (!response.ok) throw new Error("Failed to fetch tournament data.");
             const data = await response.json();
             if (!data.success) throw new Error(data.result);
             setTournament(data.result);
-        } catch (err: any) {
-            setError(err.message);
-        } finally {
-            setIsLoading(false);
-        }
+        } catch (err: any) { setError(err.message); } finally { setIsLoading(false); }
     }, [accessToken, tournamentId, API_BASE_URL]);
 
     useEffect(() => {
         fetchTournamentData();
-        const interval = setInterval(fetchTournamentData, 10000);
+        const interval = setInterval(fetchTournamentData, 5000);
         return () => clearInterval(interval);
     }, [fetchTournamentData]);
 
-    useEffect(() => {
-        const fetchFriends = async () => {
-            if (!user || !accessToken) return;
-            try {
-                // BUG FIX: Corrected the API endpoint from /api/friend/ to /api/friendships/user/
-                const response = await fetch(
-                    `${API_BASE_URL}/api/friendships/user/${user.id}`,
-                    {
-                        headers: { "Authorization": `Bearer ${accessToken}` },
-                    },
-                );
-                const data = await response.json();
-                if (data.success) setFriends(data.result);
-            } catch (err) {
-                console.error("Failed to fetch friends:", err);
-            }
-        };
-        fetchFriends();
-    }, [user, accessToken, API_BASE_URL]);
-
-    const handleJoin = async () => {
-        // Implementation remains the same
+    const handleAction = async (action: 'join' | 'start') => {
+        setIsActionLoading(true);
+        setError("");
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/tournaments/${tournamentId}/${action}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${accessToken}` },
+            });
+            const data = await response.json();
+            if (!data.success) throw new Error(data.result);
+            await fetchTournamentData();
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setIsActionLoading(false);
+        }
     };
-    const handleStart = async () => {
-        // Implementation remains the same
-    };
-    const handleInvite = async (friendId: number) => {
-        // Implementation remains the same
+    
+    const getTournamentWinner = () => {
+        if (tournament?.details.status !== 'completed' || !tournament.matches.length) return null;
+        const finalRound = Math.max(...tournament.matches.map(m => m.round_number));
+        const finalMatch = tournament.matches.find(m => m.round_number === finalRound);
+        if (!finalMatch || !finalMatch.winner_id) return null;
+        return tournament.participants.find(p => p.id === finalMatch.winner_id);
     };
 
-    const handlePlayMatch = (matchId: number) => {
-        router.push(`/play?matchId=${matchId}&tournamentId=${tournamentId}`);
-    };
+    if (isLoading) return <div className="flex justify-center items-center h-full"><Loader2 className="h-10 w-10 animate-spin"/></div>;
+    if (error && !tournament) return <div className="text-center text-destructive p-10">Error: {error}</div>;
+    if (!tournament) return <div className="text-center text-muted-foreground p-10">Tournament not found.</div>;
 
-    if (isLoading) {
-        return (
-            <div className="text-center text-white p-10">
-                Loading Tournament...
-            </div>
-        );
-    }
-    if (error) {
-        return (
-            <div className="text-center text-red-500 p-10">Error: {error}</div>
-        );
-    }
-    if (!tournament) {
-        return (
-            <div className="text-center text-gray-400 p-10">
-                Tournament not found.
-            </div>
-        );
-    }
-
-    const isUserInTournament = tournament.participants.some((p) =>
-        p.id === user?.id
-    );
+    const isUserInTournament = tournament.participants.some((p) => p.id === user?.id);
     const isCreator = tournament.details.creator_id === user?.id;
-    const participantIds = new Set(tournament.participants.map((p) => p.id));
+    const winner = getTournamentWinner();
+
+    const rounds = tournament.matches.reduce((acc, match) => {
+        (acc[match.round_number] = acc[match.round_number] || []).push(match);
+        return acc;
+    }, {} as Record<number, Match[]>);
 
     return (
-        <div className="page-container">
-            <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold text-white">
-                    {tournament.details.name}
-                </h1>
-                <span
-                    className={`px-3 py-1 text-sm font-semibold rounded-full ${
-                        tournament.details.status === "pending"
-                            ? "bg-yellow-500 text-black"
-                            : "bg-green-500 text-black"
-                    }`}
-                >
-                    {tournament.details.status}
-                </span>
-            </div>
-
-            {tournament.details.status === "pending" && (
-                <div className="flex gap-4 mb-8">
-                    {!isUserInTournament && (
-                        <button
-                            onClick={handleJoin}
-                            className="btn btn-primary"
-                        >
-                            Join Tournament
-                        </button>
-                    )}
-                    {isCreator && (
-                        <button
-                            onClick={handleStart}
-                            className="btn btn-secondary"
-                        >
-                            Start Tournament
-                        </button>
-                    )}
-                </div>
+        <div className="container mx-auto max-w-7xl py-8 space-y-8">
+            {winner && (
+                <Card className="bg-yellow-500/10 border-yellow-500 text-center p-6 animate-in fade-in-50">
+                    <Crown className="mx-auto h-12 w-12 text-yellow-400"/>
+                    <h2 className="text-2xl font-bold mt-2">Tournament Complete!</h2>
+                    <p className="text-xl text-muted-foreground">Winner: <span className="font-bold text-foreground">{winner.name}</span></p>
+                </Card>
             )}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold">{tournament.details.name}</h1>
+                    <p className="text-muted-foreground">Status: <span className="font-semibold capitalize">{tournament.details.status.replace('_', ' ')}</span></p>
+                </div>
+                {tournament.details.status === 'pending' && (
+                    <div className="flex gap-2">
+                        {!isUserInTournament && <Button onClick={() => handleAction('join')} disabled={isActionLoading}>Join Tournament</Button>}
+                        {isCreator && <Button variant="secondary" onClick={() => handleAction('start')} disabled={isActionLoading}>Start Tournament</Button>}
+                    </div>
+                )}
+            </div>
+            {error && <p className="text-destructive text-sm">{error}</p>}
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="md:col-span-2 bg-[#1a1a1c] p-4 rounded-lg">
-                    <h2 className="text-xl font-semibold text-white mb-4">
-                        Matches
-                    </h2>
-                    {tournament.matches.length > 0
-                        ? (
-                            <div className="space-y-4">
-                                {tournament.matches.map((match) => {
-                                    const isUserInMatch =
-                                        match.player1_id === user?.id ||
-                                        match.player2_id === user?.id;
-                                    return (
-                                        <div
-                                            key={match.id}
-                                            className="bg-[#29282b] p-4 rounded-lg flex justify-between items-center"
-                                        >
-                                            <div>
-                                                <span className="font-semibold text-white">
-                                                    {match.player1_name}
-                                                </span>
-                                                <span className="mx-4 text-gray-400">
-                                                    vs
-                                                </span>
-                                                <span className="font-semibold text-white">
-                                                    {match.player2_name ||
-                                                        "(BYE)"}
-                                                </span>
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                <div className="lg:col-span-3">
+                    <h2 className="text-2xl font-semibold mb-4">Bracket</h2>
+                    <div className="flex gap-8 overflow-x-auto pb-4">
+                        {Object.entries(rounds).length > 0 ? Object.entries(rounds).map(([roundNumber, matches]) => (
+                            <div key={roundNumber} className="flex flex-col gap-6 flex-shrink-0">
+                                <h3 className="text-xl font-bold text-center text-muted-foreground">Round {roundNumber}</h3>
+                                {matches.map((match) => (
+                                    <Card key={match.id} className="w-64 bg-secondary/50">
+                                        <CardContent className="p-4 space-y-2">
+                                            <div className="flex justify-between items-center font-semibold">
+                                                <span>{match.player1_name}</span>
+                                                {match.winner_id === match.player1_id && <Trophy className="h-4 w-4 text-yellow-400"/>}
                                             </div>
-                                            {isUserInMatch &&
-                                                match.winner_id === null && (
-                                                <button
-                                                    onClick={() =>
-                                                        handlePlayMatch(
-                                                            match.id,
-                                                        )}
-                                                    className="btn btn-primary"
-                                                >
-                                                    Play Match
-                                                </button>
+                                            <div className="border-t border-border my-2"></div>
+                                            <div className="flex justify-between items-center font-semibold">
+                                                <span>{match.player2_name || '(BYE)'}</span>
+                                                {match.winner_id === match.player2_id && <Trophy className="h-4 w-4 text-yellow-400"/>}
+                                            </div>
+                                            {match.status === 'pending' && (user?.id === match.player1_id || user?.id === match.player2_id) && match.player2_id !== null && (
+                                                <Button size="sm" className="w-full mt-2" onClick={() => router.push(`/play?matchId=${match.id}&tournamentId=${tournamentId}`)}>
+                                                    <Sword className="mr-2 h-4 w-4"/> Play Match
+                                                </Button>
                                             )}
-                                            {match.winner_id !== null && (
-                                                <span className="text-green-400 font-bold">
-                                                    Completed
-                                                </span>
-                                            )}
-                                        </div>
-                                    );
-                                })}
+                                        </CardContent>
+                                    </Card>
+                                ))}
                             </div>
-                        )
-                        : (
-                            <p className="text-gray-400">
-                                Matches will appear here once the tournament
-                                starts.
-                            </p>
+                        )) : (
+                            <div className="w-full text-center text-muted-foreground py-10 border-2 border-dashed rounded-lg">
+                                <Info className="mx-auto h-12 w-12" />
+                                <h3 className="mt-2 text-sm font-semibold">Waiting for Tournament to Start</h3>
+                                <p className="mt-1 text-sm">The bracket will be generated once the creator starts the tournament.</p>
+                            </div>
                         )}
+                    </div>
                 </div>
 
-                <div className="md:col-span-1 bg-[#1a1a1c] p-4 rounded-lg space-y-6">
-                    <div>
-                        <h2 className="text-xl font-semibold text-white mb-4">
-                            Participants ({tournament.participants.length})
-                        </h2>
-                        <ul className="space-y-3 max-h-60 overflow-y-auto">
-                            {tournament.participants.map((p) => (
-                                <li
-                                    key={p.id}
-                                    className="flex items-center gap-3"
-                                >
-                                    <img
-                                        src={p.avatar || "/avatars/default.png"}
-                                        alt={p.name}
-                                        className="w-10 h-10 rounded-full"
-                                    />
-                                    <span className="text-white">{p.name}</span>
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                    <div>
-                        <h2 className="text-xl font-semibold text-white mb-4">
-                            Invite Friends
-                        </h2>
-                        <ul className="space-y-3 max-h-60 overflow-y-auto">
-                            {friends.filter((f) => !participantIds.has(f.id))
-                                .map((friend) => (
-                                    <li
-                                        key={friend.id}
-                                        className="flex items-center justify-between"
-                                    >
-                                        <span className="text-white">
-                                            {friend.name}
-                                        </span>
-                                        <button
-                                            onClick={() =>
-                                                handleInvite(friend.id)}
-                                            className="btn btn-secondary text-xs"
-                                        >
-                                            Invite
-                                        </button>
-                                    </li>
-                                ))}
-                        </ul>
-                    </div>
-                </div>
+                <Card className="lg:col-span-1 h-fit">
+                    <CardHeader><CardTitle className="flex items-center gap-2"><Users/>Participants ({tournament.participants.length})</CardTitle></CardHeader>
+                    <CardContent className="space-y-3 max-h-96 overflow-y-auto">
+                        {tournament.participants.map(p => (
+                            <div key={p.id} className="flex items-center gap-3">
+                                <img src={p.avatar ? `${API_BASE_URL}${p.avatar}` : '/avatars/default.png'} alt={p.name} className="w-8 h-8 rounded-full"/>
+                                <span>{p.name}</span>
+                            </div>
+                        ))}
+                    </CardContent>
+                </Card>
             </div>
         </div>
     );

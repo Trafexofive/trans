@@ -1,21 +1,14 @@
-
 FROM node:20-slim
 
 WORKDIR /usr/src/app
 
-# Copy package.json and package-lock.json (or yarn.lock)
+# Copy package manager files first to leverage Docker cache
 COPY package*.json ./
 
-RUN npm install --no-optional
-# RUN npm i 
+# Explicitly clean old modules before installing
+RUN rm -rf node_modules && npm install --no-optional
 
-# lean
-# RUN npm ci --only=production
-
+# Copy the rest of the application source code
 COPY . .
-
-# Define the command to run your application
-# This will execute "npm run server" which is defined in your package.json
-# as "node ./src/app.js"
 
 CMD ["npm", "run", "server"]

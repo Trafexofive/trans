@@ -1,22 +1,23 @@
 "use client";
 
-// will only be used to route /profile/ to the logged-in user's profile (/profile/[id])
-
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/app/contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function ProfilePage() {
-  const { user: loggedInUser } = useAuth();
+  const { user, isLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    // Redirect to the logged-in user's profile if no ID is provided
-    if (loggedInUser) {
-      router.push(`/profile/${loggedInUser.id}`);
+    if (!isLoading && user) {
+      router.replace(`/profile/${user.id}`);
     }
-  }, [loggedInUser, router]);
+  }, [user, isLoading, router]);
 
-  // Render nothing since this component is only for redirection
-  return null;
+  // Render a loading state or nothing while redirecting
+  return (
+      <div className="flex h-full items-center justify-center">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-secondary border-t-primary" />
+      </div>
+  );
 }

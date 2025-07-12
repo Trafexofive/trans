@@ -83,7 +83,6 @@ const ChatModel = {
         }
     },
 
-    // NEW: Function to delete the entire conversation between two users.
     async chat_delete_conversation(db, user1_id, user2_id) {
         try {
             const stmt = db.prepare(`
@@ -133,27 +132,25 @@ const ChatModel = {
     async chat_get_profiles(db, user_id) {
         try {
             const stmt = db.prepare(`
-                SELECT u.id, u.name, u.email, u.avatar, u.wins, u.loses
+                -- First, get all established friends
+                SELECT u.id, u.name, u.avatar
+                FROM users u
+                JOIN friendships f ON (u.id = f.friend_id AND f.user_id = @userId) OR (u.id = f.user_id AND f.friend_id = @userId)
+                WHERE u.id != @userId
+
+                UNION -- UNION automatically handles duplicates
+
+                -- Second, get all unique past chat partners who might not be friends
+                SELECT u.id, u.name, u.avatar
                 FROM users u
                 WHERE u.id IN (
-                    SELECT recipient_id FROM chat WHERE sender_id = ?
+                    SELECT sender_id FROM chat WHERE recipient_id = @userId
                     UNION
-                    SELECT sender_id FROM chat WHERE recipient_id = ?
-                    UNION
-                    SELECT friend_id FROM friendships WHERE user_id = ?
-                    UNION
-                    SELECT user_id FROM friendships WHERE friend_id = ?
-                )
-                AND u.id != ?
-                ORDER BY u.name;
+                    SELECT recipient_id FROM chat WHERE sender_id = @userId
+                ) AND u.id != @userId
+                ORDER BY name;
             `);
-            const res = await stmt.all(
-                user_id,
-                user_id,
-                user_id,
-                user_id,
-                user_id,
-            );
+            const res = await stmt.all({ userId: user_id });
             return { success: true, code: 200, result: res };
         } catch (err) {
             return { success: false, code: 500, result: err.message };

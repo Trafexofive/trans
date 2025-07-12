@@ -1,0 +1,25 @@
+# ======================================================================================
+# Development Dockerfile for Next.js Frontend
+# --------------------------------------------------------------------------------------
+# This file's SOLE purpose is to create a Node.js environment with all
+# dependencies installed. The source code will be provided by a Docker volume
+# at runtime, enabling hot-reloading.
+# ======================================================================================
+FROM node:20-slim
+
+# Set the working directory inside the container
+WORKDIR /app
+
+# Copy package manager files to leverage Docker's layer caching.
+# This is the ONLY code copy operation.
+COPY package*.json ./
+
+# Install all dependencies. This layer will only be rebuilt if package.json changes.
+RUN npm install
+
+# Expose the port for the Next.js development server.
+EXPOSE 3000
+
+# The command to start the development server. The source code will be mounted
+# into /app by docker-compose, and this command will execute against it.
+CMD ["npm", "run", "dev"]

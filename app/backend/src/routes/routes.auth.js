@@ -50,6 +50,7 @@ async function AuthRoutes(fastify)
     // get 2fa secret for the session user
     fastify.get('/2fa_get', { onRequest: [fastify.auth] }, AuthCtl.TwofaGet)
     
+    
     // delete 2fa secret for the session user
     fastify.delete('/2fa_delete', { onRequest: [fastify.auth] }, AuthCtl.TwofaDelete)
 
@@ -66,19 +67,6 @@ async function AuthRoutes(fastify)
         }
 
     }, AuthCtl.TwofaVerify)
-
-    fastify.post('/login/verify-2fa', {
-        onRequest: [fastify.auth], // This validates the pre_auth_token
-        schema: {
-            body: {
-                type: 'object',
-                required: ['two_fa_token'],
-                properties: {
-                    two_fa_token: { type: 'string' }
-                }
-            }
-        }
-    }, AuthCtl.Login2faVerify);
 
 }
 

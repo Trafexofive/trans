@@ -61,3 +61,4 @@ EXPOSE 3000
 # The command to start the optimized Node.js server
 # This is the entrypoint for the standalone output
 CMD ["node", "server.js"]
+

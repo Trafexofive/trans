@@ -1,5 +1,5 @@
-import AuthGuard from "../components/AuthGuard";
-import AppNavbar from "../components/AppNavbar";
+import AuthGuard from "@/components/AuthGuard";
+import AppNavbar from "@/components/AppNavbar";
 
 export default function ProtectedLayout({
   children,
@@ -8,9 +8,9 @@ export default function ProtectedLayout({
 }) {
   return (
     <AuthGuard>
-      <div className="relative flex min-h-screen flex-col bg-background">
+      <div className="flex h-screen flex-col overflow-hidden">
         <AppNavbar />
-        <main className="flex-1 container mx-auto max-w-7xl py-6">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
           {children}
         </main>
       </div>

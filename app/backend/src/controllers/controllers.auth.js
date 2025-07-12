@@ -6,33 +6,22 @@ const bcrypt = require('bcrypt')
 const qrcode = require('qrcode')
 const speakeasy = require('speakeasy')
 const { gen_jwt_token } = require('../utils/utils.security')
-const { check_and_sanitize } = require("../utils/utils.security");
 require('dotenv').config()
 
 const AuthCtl = {
 
     async Login (request, reply)
     {
-        rawUserData = request.body
-        const { errors, sanitized, isValid } = check_and_sanitize(rawUserData);
-
-        if (!isValid)
-        {
-            return reply.status(400).send({
-                success: false,
-                code: 400,
-                result: errors.join(", ")
-            })
-        }
-
-        const res = await UserModel.user_fetch_by_email(this.db, sanitized.email)
+        const { email, password } = request.body
+        const res = await UserModel.user_fetch_by_email(this.db, email)
         
         if (res.success === false)
         {
             return reply.status(401).send({ success: false, code: 401, result: "Invalid email or password." });
         }
-        const user = res.result
-        const is_valid = await bcrypt.compare(sanitized.password, user.password)
+
+        const is_valid = await bcrypt.compare(password, res.result.password)
+
         if (is_valid === false)
         {
             return reply.status(401).send({
@@ -41,24 +30,9 @@ const AuthCtl = {
                 result: "Invalid email or password."
             });
         }
-        //----------------------------------
 
-        //------- check if 2fa is activated:
-        const check_two_fa = await TwofaModel.two_fa_get_by_id(this.db, user.id)
-        if (check_two_fa.success && check_two_fa.result.verified)
-        {
-            const preAuthTokenPayload = { id: user.id, name: user.name, email: user.email, pre_auth: true };
-            const pre_auth_token = gen_jwt_token(this, preAuthTokenPayload, '5m');
-            return reply.status(202).send({
-                success: true,
-                code: 202,
-                result: "2fa token required",
-                pre_auth_token: pre_auth_token
-            })
-        }
-        //---------------------------
+        await RefreshtokenModel.refresh_tokens_delete_by_id(this.db, res.result.id);
 
-        //-----------normal login:
         const access_token = gen_jwt_token(this, res.result, process.env.ACCESS_TOKEN_EXPIRE);
         const refresh_token = gen_jwt_token(this, res.result, process.env.REFRESH_TOKEN_EXPIRE);
         const create_token = await RefreshtokenModel.refresh_tokens_create(this.db, res.result.id, refresh_token);
@@ -75,22 +49,24 @@ const AuthCtl = {
                 refresh_token: refresh_token
             }
         });
-        //-----------------------
     },
+
 
     async Refresh(request, reply)
     {
         const { refresh_token } = request.body
-        const payload = request.user.payload
+        const decoded_token = this.jwt.verify(refresh_token)
+        const user_id = decoded_token.payload.id
 
-        const res = await RefreshtokenModel.refresh_tokens_check_by_token(this.db, payload.id, refresh_token)
+        const res = await RefreshtokenModel.refresh_tokens_check_by_token(this.db, user_id, refresh_token)
 
         if (!res.success)
         {
-            return reply.status(res.code).send(res)
+            reply.status(res.code).send(res)
+            return
         }
 
-        const new_access_token = gen_jwt_token(this, payload, process.env.ACCESS_TOKEN_EXPIRE)
+        const new_access_token = gen_jwt_token(this, decoded_token.payload, process.env.ACCESS_TOKEN_EXPIRE)
 
         reply.status(res.code).send({
             success: true,
@@ -99,19 +75,21 @@ const AuthCtl = {
         })
     },
 
-    // changed logout from deleting all refresh tokens to one refresh token
     async Logout(request, reply)
     {
-        const { refresh_token } = request.body;
-        // No need to verify the JWT here. If the token is invalid, the delete will just fail.
-        const res = await RefreshtokenModel.refresh_tokens_delete_by_token(this.db, refresh_token);
-        
-        reply.status(res.code).send(res);
+        const { refresh_token } = request.body
+        const decoded_token = this.jwt.verify(refresh_token)
+        const user_id = decoded_token.payload.id
+        const res = await RefreshtokenModel.refresh_tokens_delete_by_id(this.db, user_id)
+        reply.status(res.code).send(res)
     },
 
     async TwofaCreate(request, reply)
     {
-        const payload = request.user.payload
+        const authHeader = request.headers.authorization
+        const token = authHeader.split(' ')[1]
+        const decoded = await request.jwtVerify(token)
+        const payload = decoded.payload
 
        const check_exist = await TwofaModel.two_fa_get_by_id(this.db, payload.id)
        if (check_exist.success === true)
@@ -129,8 +107,7 @@ const AuthCtl = {
         }
 
         const secret = speakeasy.generateSecret({
-            name: payload.name,
-            email: payload.email
+            name: payload.email,
         })
 
         const store_secret =  await TwofaModel.two_fa_create(this.db, payload.id, secret)
@@ -148,28 +125,47 @@ const AuthCtl = {
 
     async TwofaGet(request, reply)
     {
-        const payload = request.user.payload
+        const authHeader = request.headers.authorization
+        const token = authHeader.split(' ')[1]
+        const decoded = await request.jwtVerify(token)
+        const payload = decoded.payload
+
         const res = await TwofaModel.two_fa_get_by_id(this.db, payload.id)
         if (res.success === false)
+        {
             return reply.status(res.code).send(res)
+        }
+
         const qr_code = await qrcode.toDataURL(res.result.otpauth_url)
         reply.status(200).send(qr_code) // wrap this into an img take source in html
     },
 
     async TwofaDelete(request, reply)
     {
-        const payload = request.user.payload
-        const res = await TwofaModel.two_fa_delete_by_id(this.db, payload.id)
+        const authHeader = request.headers.authorization
+        const token = authHeader.split(' ')[1]
+        const decoded = await request.jwtVerify(token)
+        const payload = decoded.payload
+        const id = payload.id
+
+        const res = await TwofaModel.two_fa_delete_by_id(this.db, id)
         reply.status(res.code).send(res)
     },
 
     async TwofaVerify(request, reply)
     {
-        const payload = request.user.payload
+        const authHeader = request.headers.authorization
+        const access_token = authHeader.split(' ')[1]
+        const decoded = await request.jwtVerify(access_token)
+        const payload = decoded.payload
         const { token } = request.body
-        const res = await TwofaModel.two_fa_get_by_id(this.db, payload.id)
+        const id = payload.id
+    
+        const res = await TwofaModel.two_fa_get_by_id(this.db, id)
         if (res.success === false)
+        {
             return reply.status(res.code).send(res)
+        }
 
         const verified = speakeasy.totp.verify({
             secret: res.result.ascii,
@@ -180,9 +176,11 @@ const AuthCtl = {
 
         if (verified)
         {
-            const update = await TwofaModel.two_fa_verify_by_id(this.db, payload.id)
+            const update = await TwofaModel.two_fa_verify_by_id(this.db, id)
             if (update.success === false)
+            {
                 return reply.status(update.code).send(update)
+            }
 
             return reply.status(200).send({
                 success: true,
@@ -196,52 +194,6 @@ const AuthCtl = {
             code: 400,
             result: "invalid 2FA token"
         })
-    },
-
-    async Login2faVerify(request, reply) {
-        const user = request.user.payload
-        // 6 numbers token
-        const { two_fa_token } = request.body
-
-        // First, double-check this is a pre-auth token in auth header
-        if (!user.pre_auth) {
-            return reply.status(401).send({ success: false, code: 401, result: "Invalid token type" })
-        }
-
-        // Now, verify the 2FA code, just like in TwofaVerify
-        const twoFaResult = await TwofaModel.two_fa_get_by_id(this.db, user.id)
-        if (!twoFaResult.success) {
-            return reply.status(401).send({ success: false, code: 401, result: "2FA is not set up correctly" })
-        }
-
-        const verified = speakeasy.totp.verify({
-            secret: twoFaResult.result.ascii,
-            encoding: 'ascii',
-            token: two_fa_token,
-            window: 1,
-        });
-
-        if (verified) {
-            // 2FA code is correct! Now we can complete the login.
-            // Generate the FINAL access and refresh tokens.
-            const user_payload = { id: user.id, name: user.name, email: user.email };
-            const access_token = gen_jwt_token(this, user_payload, process.env.ACCESS_TOKEN_EXPIRE);
-            const refresh_token = gen_jwt_token(this, user_payload, process.env.REFRESH_TOKEN_EXPIRE);
-            await RefreshtokenModel.refresh_tokens_create(this.db, user.id, refresh_token);
-            
-            return reply.status(200).send({
-                success: true,
-                code: 200,
-                result: { access_token, refresh_token }
-            });
-        }
-
-        // If we reach here, the 2FA code was wrong.
-        return reply.status(401).send({
-            success: false,
-            code: 401,
-            result: "Invalid 2FA token"
-        });
     }
 }
 

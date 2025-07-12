@@ -1,102 +1,58 @@
-import { cookies } from "next/headers";
+'use client';
+
+import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import Link from "next/link";
+import { Gamepad2, Trophy, BarChart, Swords } from 'lucide-react';
 
-async function getMyProfile() {
-    const cookieStore = cookies();
-    const token = cookieStore.get("accessToken")?.value;
-    if (!token) return null;
+export default function DashboardPage() {
+    const { user, isLoading } = useAuth();
 
-    try {
-        const res = await fetch(
-            `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/users/me`,
-            {
-                headers: { "Authorization": `Bearer ${token}` },
-                cache: "no-store",
-            },
-        );
-        if (!res.ok) return null;
-        const data = await res.json();
-        return data.success ? data.result : null;
-    } catch (error) {
-        console.error("Failed to fetch profile on server:", error);
-        return null;
-    }
-}
-
-export default async function DashboardPage() {
-    const user = await getMyProfile();
-
-    if (!user) {
+    if (isLoading || !user) {
         return (
-            <div>
-                <h1 className="text-3xl font-bold">Error</h1>
-                <p className="text-muted-foreground">
-                    Could not load user dashboard. Please try logging in again.
-                </p>
+            <div className="flex h-full items-center justify-center">
+                <div className="h-12 w-12 animate-spin rounded-full border-4 border-secondary border-t-primary" />
             </div>
         );
     }
 
     const totalMatches = user.wins + user.loses;
-    const winRate = totalMatches > 0
-        ? `${Math.round((user.wins / totalMatches) * 100)}%`
-        : "N/A";
+    const winRate = totalMatches > 0 ? `${Math.round((user.wins / totalMatches) * 100)}%` : "N/A";
+
+    const stats = [
+        { title: "Wins", value: user.wins, icon: <Trophy className="h-6 w-6 text-green-400" /> },
+        { title: "Losses", value: user.loses, icon: <Swords className="h-6 w-6 text-red-400" /> },
+        { title: "Total Matches", value: totalMatches, icon: <Gamepad2 className="h-6 w-6 text-blue-400" /> },
+        { title: "Win Rate", value: winRate, icon: <BarChart className="h-6 w-6 text-yellow-400" /> },
+    ];
 
     return (
-        <div className="space-y-6">
+        <div className="container mx-auto max-w-7xl space-y-8 py-8">
             <div>
                 <h1 className="text-3xl font-bold">Welcome, {user.name}</h1>
-                <p className="text-muted-foreground">
-                    Here's a look at your journey in the world of Pong.
-                </p>
+                <p className="text-muted-foreground">This is your command center. Review your stats and jump into a game.</p>
             </div>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Wins</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <p className="text-4xl font-bold">{user.wins}</p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Losses</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <p className="text-4xl font-bold">{user.loses}</p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Total Matches</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <p className="text-4xl font-bold">{totalMatches}</p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Win Rate</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <p className="text-4xl font-bold">{winRate}</p>
-                    </CardContent>
-                </Card>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {stats.map(stat => (
+                    <Card key={stat.title}>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">{stat.title}</CardTitle>
+                            {stat.icon}
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold">{stat.value}</div>
+                        </CardContent>
+                    </Card>
+                ))}
             </div>
-            <div className="space-y-4">
-                <h2 className="text-2xl font-bold">Quick Actions</h2>
-                <div className="flex gap-4">
-                    <Button asChild>
-                        <Link href="/play">Find a Match</Link>
-                    </Button>
-                    <Button variant="secondary" asChild>
-                        <Link href="/tournaments">Browse Tournaments</Link>
-                    </Button>
-                </div>
-            </div>
+            <Card>
+                <CardHeader><CardTitle>Quick Actions</CardTitle></CardHeader>
+                <CardContent className="flex flex-col sm:flex-row gap-4">
+                    <Button asChild size="lg" className="flex-1"><Link href="/play">Find a Match</Link></Button>
+                    <Button asChild variant="secondary" size="lg" className="flex-1"><Link href="/leaderboard">View Leaderboard</Link></Button>
+                </CardContent>
+            </Card>
         </div>
     );
 }

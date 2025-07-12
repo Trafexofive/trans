@@ -1,6 +1,8 @@
 const UserCtrl = require("../controllers/controllers.users");
 
 function UserRoutes(fastify, options, done) {
+    const auth = { onRequest: [fastify.auth] };
+
     fastify.post("/", {
         schema: {
             body: {
@@ -15,19 +17,24 @@ function UserRoutes(fastify, options, done) {
         },
     }, UserCtrl.CreateUser);
 
-    fastify.get("/", { onRequest: [fastify.auth] }, UserCtrl.GetAllUsers);
-    
-    // Profile routes
-    fastify.get("/me", { onRequest: [fastify.auth] }, UserCtrl.GetMyProfile);
-    fastify.put("/me", { onRequest: [fastify.auth] }, UserCtrl.UpdateMyProfile); 
-    fastify.get("/:id", { onRequest: [fastify.auth] }, UserCtrl.GetUserById);
-    
-    // Match history
-    fastify.get(
-        "/:id/matches",
-        { onRequest: [fastify.auth] },
-        UserCtrl.getUserMatchHistory,
-    );
+    fastify.get("/", auth, UserCtrl.GetAllUsers);
+    fastify.get("/me", auth, UserCtrl.GetMyProfile);
+    fastify.put("/me", auth, UserCtrl.UpdateMyProfile);
+    fastify.post("/me/avatar", auth, UserCtrl.UpdateMyAvatar);
+
+    fastify.delete("/me", {
+        ...auth,
+        schema: {
+            body: {
+                type: "object",
+                required: ["password"],
+                properties: { password: { type: "string" } },
+            },
+        },
+    }, UserCtrl.DeleteUser);
+
+    fastify.get("/:id", auth, UserCtrl.GetUserById);
+    fastify.get("/:id/matches", auth, UserCtrl.getUserMatchHistory);
 
     done();
 }

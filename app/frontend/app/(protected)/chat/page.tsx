@@ -1,71 +1,51 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, ReactNode } from "react";
-import { useAuth } from "@/app/contexts/AuthContext";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Gamepad2, MessageSquare, UserX } from "lucide-react";
+import { Card } from "@/components/ui/Card";
+import { cn } from "@/lib/utils";
 
-// --- Reusable Components defined in-file to work around file creation limitations ---
+const RenderChatMessage = memo(({ content }: { content: string }) => {
+    const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    const parts = [];
+    let lastIndex = 0;
+    let match;
 
-const ChatMessageContent = ({ content }: { content: string }) => {
-    const tournamentInviteRegex =
-        /You have been invited to the tournament "([^"]+)". Join here: (\/tournaments\/\d+)/;
-    const tournamentMatch = content.match(tournamentInviteRegex);
-    if (tournamentMatch) {
-        const tournamentName = tournamentMatch[1];
-        const tournamentUrl = tournamentMatch[2];
-        return (
-            <p className="message-content">
-                Invite to{" "}
-                <Link
-                    href={tournamentUrl}
-                    className="text-blue-400 font-bold hover:underline"
-                >
-                    {tournamentName}
-                </Link>
-            </p>
+    while ((match = linkRegex.exec(content)) !== null) {
+        if (match.index > lastIndex) {
+            parts.push(content.substring(lastIndex, match.index));
+        }
+        const [fullMatch, text, url] = match;
+        parts.push(
+            <Link
+                key={match.index}
+                href={url}
+                className="text-blue-400 hover:underline font-bold"
+            >
+                {text}
+            </Link>,
         );
+        lastIndex = match.index + fullMatch.length;
     }
 
-    const gameInviteRegex = /Let's play Pong! \[Play Now\]\(\/play\)/;
-    if (gameInviteRegex.test(content)) {
-        return (
-            <p className="message-content">
-                Let's play Pong!{" "}
-                <Link
-                    href="/play"
-                    className="text-blue-400 font-bold hover:underline"
-                >
-                    Play Now
-                </Link>
-            </p>
-        );
+    if (lastIndex < content.length) {
+        parts.push(content.substring(lastIndex));
     }
 
-    return <p className="message-content">{content}</p>;
-};
-
-const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, children }: { isOpen: boolean; onClose: () => void; onConfirm: () => void; title: string; children: ReactNode; }) => {
-    if (!isOpen) return null;
     return (
-        <div className="modal-overlay" onClick={onClose}>
-            <div className="modal solid-effect" onClick={(e) => e.stopPropagation()}>
-                <div className="modal-header">
-                    <h3 className="modal-title">{title}</h3>
-                </div>
-                <div className="modal-content">
-                    {children}
-                </div>
-                <div className="modal-actions">
-                    <button onClick={onClose} className="btn btn-secondary">Cancel</button>
-                    <button onClick={onConfirm} className="btn btn-danger">Confirm</button>
-                </div>
-            </div>
+        <div className="text-sm break-words">
+            {parts.map((part, i) => <span key={i}>{part}</span>)}
         </div>
     );
-};
+});
+RenderChatMessage.displayName = "RenderChatMessage";
 
-interface ConversationPartner {
+interface ChatPartner {
     id: number;
     name: string;
     avatar: string;
@@ -74,8 +54,6 @@ interface ConversationPartner {
 export default function ChatPage() {
     const {
         user,
-        accessToken,
-        isLoading,
         chats,
         sendChatMessage,
         loadChatHistory,
@@ -86,212 +64,198 @@ export default function ChatPage() {
     } = useAuth();
     const router = useRouter();
     const searchParams = useSearchParams();
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
-
-    const [activePartner, setActivePartner] = useState<ConversationPartner | null>(null);
+    const [activePartner, setActivePartner] = useState<ChatPartner | null>(
+        null,
+    );
     const [newMessage, setNewMessage] = useState("");
-    const [isBlockedByMe, setIsBlockedByMe] = useState(false);
-    
-    const [modalState, setModalState] = useState({
-      isOpen: false,
-      title: '',
-      content: '',
-      onConfirm: () => {},
-    });
-
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    const fetchBlockStatus = useCallback(async (partnerId: number) => {
-        if (!accessToken) return;
-        try {
-            const res = await fetch(`${API_BASE_URL}/api/friendships/block/${partnerId}`, {
-                headers: { "Authorization": `Bearer ${accessToken}` },
-            });
-            const data = await res.json();
-            if (data.success) setIsBlockedByMe(data.result.isBlocked);
-        } catch (e) {
-            console.error("Failed to fetch block status", e);
-        }
-    }, [accessToken, API_BASE_URL]);
+    const selectPartner = useCallback((partner: ChatPartner) => {
+        router.push(`/chat?with=${partner.id}`, { scroll: false });
+    }, [router]);
 
     useEffect(() => {
-        const partnerIdStr = searchParams.get("with");
-        if (partnerIdStr) {
-            const partnerId = parseInt(partnerIdStr, 10);
-            const partner = chatPartners.find((p) => p.id === partnerId);
-            if (partner) {
+        const partnerId = searchParams.get("with");
+        const currentPartnerId = activePartner?.id;
+        if (partnerId) {
+            const partner = chatPartners.find((p) =>
+                p.id === parseInt(partnerId, 10)
+            );
+            if (partner && currentPartnerId !== partner.id) {
                 setActivePartner(partner);
-                loadChatHistory(partnerId);
-                clearUnreadMessages(partnerId);
-                fetchBlockStatus(partnerId);
-            } else {
-                setActivePartner(null);
+                loadChatHistory(partner.id);
             }
-        } else {
+            if (partner) {
+                clearUnreadMessages(partner.id);
+            }
+        } else if (currentPartnerId) {
+            // If no partner in URL, clear the active one
             setActivePartner(null);
         }
-    }, [searchParams, chatPartners, loadChatHistory, clearUnreadMessages, fetchBlockStatus]);
-    
+    }, [
+        searchParams,
+        chatPartners,
+        activePartner?.id,
+        loadChatHistory,
+        clearUnreadMessages,
+    ]);
+
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [chats, activePartner]);
 
-    const handleSendMessage = () => {
+    const handleSendMessage = (e: React.FormEvent) => {
+        e.preventDefault();
         if (!newMessage.trim() || !activePartner) return;
         sendChatMessage(activePartner.id, newMessage);
         setNewMessage("");
     };
 
-    const handleFriendAndBlockAction = (action: "remove" | "block" | "unblock") => {
-        if (!activePartner) return;
-
-        let title = '';
-        let content = '';
-
-        switch (action) {
-            case 'remove':
-                title = `Unfriend ${activePartner.name}?`;
-                content = `Are you sure you want to remove ${activePartner.name} as a friend? This action cannot be undone.`;
-                break;
-            case 'block':
-                title = `Block ${activePartner.name}?`;
-                content = `This will block all communication and remove them as a friend. Are you sure?`;
-                break;
-            case 'unblock':
-                title = `Unblock ${activePartner.name}?`;
-                content = `You will be able to communicate with ${activePartner.name} again.`;
-                break;
-        }
-
-        setModalState({
-            isOpen: true,
-            title: title,
-            content: content,
-            onConfirm: async () => {
-                await friendAction(activePartner.id, action);
-                if (action === 'remove' || action === 'block') {
-                    router.push('/chat');
-                } else {
-                    fetchBlockStatus(activePartner.id);
-                }
-                closeModal();
-            },
-        });
-    };
-    
-    const closeModal = () => {
-      setModalState({ isOpen: false, title: '', content: '', onConfirm: () => {} });
-    };
-
-    const activeChatMessages = (activePartner && chats.get(activePartner.id)) || [];
-
-    if (isLoading) {
-        return <div className="p-10 text-center text-white">Loading...</div>;
-    }
+    const activeChatMessages = (activePartner && chats.get(activePartner.id)) ||
+        [];
 
     return (
-        <div className="page-container">
-            <ConfirmationModal
-                isOpen={modalState.isOpen}
-                onClose={closeModal}
-                onConfirm={modalState.onConfirm}
-                title={modalState.title}
-            >
-                <p>{modalState.content}</p>
-            </ConfirmationModal>
-
-            <div className="chat-main-container">
-                <div className="sidebar-gradient">
-                    <div className="sidebar solid-effect">
-                        <div className="sidebar-header">
-                            <h2 className="sidebar-title">Conversations</h2>
-                        </div>
-                        <div className="conversation-list">
-                            {chatPartners.map((partner) => (
-                                <div
-                                    key={partner.id}
-                                    onClick={() => router.push(`/chat?with=${partner.id}`)}
-                                    className={`conversation-item ${activePartner?.id === partner.id ? "active" : ""}`}
-                                >
-                                    <div className="relative flex items-center gap-3">
-                                        <Link href={`/profile/${partner.id}`} onClick={(e) => e.stopPropagation()}>
-                                            <img
-                                                src={partner.avatar || "/avatars/default.png"}
-                                                alt={partner.name}
-                                                className="avatar"
-                                            />
-                                        </Link>
-                                        {unreadFrom.has(partner.id) && (
-                                            <span className="absolute top-0 left-8 block h-3 w-3 rounded-full bg-green-400 ring-2 ring-gray-800"></span>
-                                        )}
-                                        <div className="conversation-user-info">
-                                            <p className="conversation-username">{partner.name}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
+        <Card className="w-full h-[calc(100vh-8rem)] flex shadow-2xl">
+            <div className="w-1/3 min-w-[300px] border-r border-border flex flex-col">
+                <div className="p-4 border-b border-border">
+                    <h2 className="text-xl font-semibold">Conversations</h2>
                 </div>
-
-                <div className="chat-area-gradient">
-                    <div className="chat-area solid-effect">
-                        {activePartner ? (
-                            <>
-                                <div className="chat-header">
-                                    <div className="flex items-center gap-4">
-                                        <Link href={`/profile/${activePartner.id}`}>
-                                          <img src={activePartner.avatar || '/avatars/default.png'} alt={activePartner.name} className="avatar h-10 w-10"/>
-                                        </Link>
-                                        <p className="chat-header-name">{activePartner.name}</p>
-                                    </div>
-                                    {/* FIX: Button container with flex properties for uniform size */}
-                                    <div className="flex items-stretch gap-2" style={{minWidth: '320px'}}>
-                                        <button onClick={() => sendChatMessage(activePartner.id, "Let's play Pong! [Play Now](/play)")} className="btn btn-primary btn-sm">Invite to Game</button>
-                                        <button onClick={() => handleFriendAndBlockAction("remove")} className="btn btn-secondary btn-sm">Unfriend</button>
-                                        <button onClick={() => handleFriendAndBlockAction(isBlockedByMe ? "unblock" : "block")} className={`btn btn-sm ${isBlockedByMe ? "bg-yellow-500 hover:bg-yellow-600" : "btn-danger"}`}>
-                                            {isBlockedByMe ? "Unblock" : "Block"}
-                                        </button>
-                                    </div>
-                                </div>
-                                <div className="messages-container">
-                                    {activeChatMessages.map((msg, index) => (
-                                        <div key={index} className={`message-wrapper ${msg.from === user?.id ? "sent" : "received"}`}>
-                                            <div className="message-gradient">
-                                                <div className="message-bubble">
-                                                    <ChatMessageContent content={msg.content} />
-                                                    <p className="message-timestamp">
-                                                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                    <div ref={messagesEndRef} />
-                                </div>
-                                <div className="input-area">
-                                    <div className="input-wrapper">
-                                        <div className="input-gradient">
-                                            <input
-                                                type="text"
-                                                value={newMessage}
-                                                onChange={(e) => setNewMessage(e.target.value)}
-                                                onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
-                                                placeholder={`Message ${activePartner.name}...`}
-                                                className="message-input"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            </>
-                        ) : (
-                            <div className="empty-chat-state">
-                                <p className="empty-chat-text">Select a conversation to begin.</p>
-                            </div>
-                        )}
-                    </div>
+                <div className="flex-1 overflow-y-auto">
+                    {chatPartners.map((partner) => (
+                        <button
+                            key={partner.id}
+                            onClick={() => selectPartner(partner)}
+                            className={cn(
+                                "w-full text-left p-3 flex items-center gap-4 transition-colors hover:bg-muted",
+                                activePartner?.id === partner.id &&
+                                    "bg-secondary",
+                            )}
+                        >
+                            <img
+                                src={partner.avatar || "/avatars/default.png"}
+                                alt={partner.name}
+                                className="h-10 w-10 rounded-full"
+                            />
+                            <span className="font-medium flex-1 truncate">
+                                {partner.name}
+                            </span>
+                            {unreadFrom.has(partner.id) && (
+                                <span className="ml-auto h-2.5 w-2.5 rounded-full bg-primary animate-pulse" />
+                            )}
+                        </button>
+                    ))}
                 </div>
             </div>
-        </div>
+
+            <div className="w-2/3 flex flex-col bg-muted/20">
+                {activePartner
+                    ? (
+                        <>
+                            <div className="p-4 border-b border-border flex items-center justify-between bg-card">
+                                <Link
+                                    href={`/profile/${activePartner.id}`}
+                                    className="flex items-center gap-3 hover:underline"
+                                >
+                                    <img
+                                        src={activePartner.avatar ||
+                                            "/avatars/default.png"}
+                                        alt={activePartner.name}
+                                        className="h-10 w-10 rounded-full"
+                                    />
+                                    <h2 className="text-xl font-semibold">
+                                        {activePartner.name}
+                                    </h2>
+                                </Link>
+                                <div className="flex gap-1">
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        title="Invite to Game"
+                                        onClick={() =>
+                                            sendChatMessage(
+                                                activePartner.id,
+                                                `Let's play Pong! [Play Now](/play?invite=${user?.id})`,
+                                            )}
+                                    >
+                                        <Gamepad2 className="h-5 w-5" />
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        title="Block User"
+                                        onClick={() =>
+                                            friendAction(
+                                                activePartner.id,
+                                                "block",
+                                            )}
+                                    >
+                                        <UserX className="h-5 w-5 text-red-500" />
+                                    </Button>
+                                </div>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                                {activeChatMessages.map((msg) => (
+                                    <div
+                                        key={msg.id}
+                                        className={cn(
+                                            "flex items-end gap-2",
+                                            msg.from === user?.id
+                                                ? "justify-end"
+                                                : "justify-start",
+                                        )}
+                                    >
+                                        <div
+                                            className={cn(
+                                                "max-w-[70%] p-3 rounded-lg shadow",
+                                                msg.from === user?.id
+                                                    ? "bg-primary text-primary-foreground"
+                                                    : "bg-secondary",
+                                            )}
+                                        >
+                                            <RenderChatMessage
+                                                content={msg.content}
+                                            />
+                                            <p className="text-xs text-right opacity-60 mt-1">
+                                                {new Date(msg.timestamp)
+                                                    .toLocaleTimeString([], {
+                                                        hour: "2-digit",
+                                                        minute: "2-digit",
+                                                    })}
+                                            </p>
+                                        </div>
+                                    </div>
+                                ))}
+                                <div ref={messagesEndRef} />
+                            </div>
+                            <form
+                                onSubmit={handleSendMessage}
+                                className="p-4 border-t border-border flex items-center gap-4 bg-card"
+                            >
+                                <Input
+                                    value={newMessage}
+                                    onChange={(e) =>
+                                        setNewMessage(e.target.value)}
+                                    placeholder="Type a message..."
+                                    className="flex-1"
+                                    autoComplete="off"
+                                />
+                                <Button type="submit">Send</Button>
+                            </form>
+                        </>
+                    )
+                    : (
+                        <div className="flex flex-1 flex-col items-center justify-center text-muted-foreground text-center p-8">
+                            <MessageSquare className="h-16 w-16 mb-4" />
+                            <h2 className="text-xl font-semibold">
+                                Select a conversation
+                            </h2>
+                            <p>
+                                Start a new chat from the leaderboard or a
+                                user's profile.
+                            </p>
+                        </div>
+                    )}
+            </div>
+        </Card>
     );
 }

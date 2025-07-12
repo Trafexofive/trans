@@ -1,6 +1,4 @@
-
 const TournamentModel = {
-    // Initializes the main tournaments table
     tournaments_init() {
         return `CREATE TABLE IF NOT EXISTS tournaments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -12,7 +10,6 @@ const TournamentModel = {
         );`
     },
 
-    // Initializes the table linking users to tournaments
     participants_init() {
         return `CREATE TABLE IF NOT EXISTS tournament_participants (
             tournament_id INTEGER NOT NULL,
@@ -24,7 +21,6 @@ const TournamentModel = {
         );`
     },
     
-    // Initializes the table to store all matches within a tournament
     matches_init() {
         return `CREATE TABLE IF NOT EXISTS matches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,6 +36,23 @@ const TournamentModel = {
             FOREIGN KEY (player2_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY (winner_id) REFERENCES users(id) ON DELETE CASCADE
         );`
+    },
+
+    async tournament_get_all(db) {
+        try {
+            const stmt = db.prepare(`
+                SELECT t.id, t.name, t.status, u.name as creator_name,
+                (SELECT COUNT(*) FROM tournament_participants WHERE tournament_id = t.id) as participant_count
+                FROM tournaments t
+                JOIN users u ON t.creator_id = u.id
+                WHERE t.status != 'completed'
+                ORDER BY t.created_at DESC
+            `);
+            const res = await stmt.all();
+            return { success: true, code: 200, result: res };
+        } catch (err) {
+            return { success: false, code: 500, result: err.message };
+        }
     },
 
     async tournament_create(db, name, creator_id) {
@@ -102,13 +115,19 @@ const TournamentModel = {
 
     async match_create_bulk(db, tournament_id, matches) {
         try {
-            const stmt = db.prepare(`INSERT INTO matches (tournament_id, round_number, player1_id, player2_id) VALUES (?, ?, ?, ?)`);
+            const stmt = db.prepare(`INSERT INTO matches (tournament_id, round_number, player1_id, player2_id, status) VALUES (?, ?, ?, ?, ?)`);
             const insert = db.transaction(() => {
                 for (const match of matches) {
-                    stmt.run(tournament_id, match.round, match.player1.id, match.player2?.id);
+                    const status = match.player2 ? 'pending' : 'completed';
+                    const winner_id = match.player2 ? null : match.player1.id;
+                    stmt.run(tournament_id, match.round, match.player1.id, match.player2?.id, status);
+                    if (!match.player2) {
+                        db.prepare(`UPDATE matches SET winner_id = ? WHERE id = (SELECT last_insert_rowid())`).run(winner_id);
+                    }
                 }
             });
             insert();
+            await this.checkAndAdvanceTournament(db, tournament_id); // Check immediately for byes
             return { success: true, code: 201, result: "Matches created" };
         } catch (err) {
             return { success: false, code: 500, result: err.message };
@@ -120,8 +139,8 @@ const TournamentModel = {
             const stmt = db.prepare(`
                 SELECT 
                     m.id, m.round_number, m.status, m.winner_id,
-                    m.player1_id, p1.name as player1_name, p1.avatar as player1_avatar,
-                    m.player2_id, p2.name as player2_name, p2.avatar as player2_avatar
+                    p1.id as player1_id, p1.name as player1_name, p1.avatar as player1_avatar,
+                    p2.id as player2_id, p2.name as player2_name, p2.avatar as player2_avatar
                 FROM matches m
                 JOIN users p1 ON m.player1_id = p1.id
                 LEFT JOIN users p2 ON m.player2_id = p2.id
@@ -137,15 +156,47 @@ const TournamentModel = {
 
     async match_update_winner(db, match_id, winner_id) {
         try {
-            const stmt = db.prepare(`
-                UPDATE matches 
-                SET winner_id = ?, status = 'completed' 
-                WHERE id = ? AND status != 'completed'
-            `);
-            const info = await stmt.run(winner_id, match_id);
+            const { tournament_id } = db.prepare('SELECT tournament_id FROM matches WHERE id = ?').get(match_id);
+            db.prepare(`UPDATE matches SET winner_id = ?, status = 'completed' WHERE id = ? AND status != 'completed'`).run(winner_id, match_id);
+            await this.checkAndAdvanceTournament(db, tournament_id);
             return { success: true, code: 200, result: `Match ${match_id} updated.` };
         } catch (err) {
             return { success: false, code: 500, result: err.message };
+        }
+    },
+
+    async checkAndAdvanceTournament(db, tournament_id) {
+        const allMatchesInTournament = db.prepare('SELECT * FROM matches WHERE tournament_id = ? ORDER BY round_number').all(tournament_id);
+        if (allMatchesInTournament.length === 0) return;
+
+        const latestRoundNumber = Math.max(...allMatchesInTournament.map(m => m.round_number));
+        const latestRoundMatches = allMatchesInTournament.filter(m => m.round_number === latestRoundNumber);
+
+        const isRoundComplete = latestRoundMatches.every(m => m.status === 'completed');
+
+        if (isRoundComplete) {
+            const winners = latestRoundMatches.map(m => m.winner_id).filter(id => id !== null);
+
+            if (winners.length === 1 && latestRoundMatches.length === 1) {
+                await this.tournament_update_status(db, tournament_id, 'completed');
+                console.log(`Tournament ${tournament_id} completed. Winner is user ${winners[0]}.`);
+                return;
+            } 
+            
+            if (winners.length >= 1) {
+                const newMatches = [];
+                const nextRoundNum = latestRoundNumber + 1;
+                for (let i = 0; i < winners.length; i += 2) {
+                    const p1_id = winners[i];
+                    const p2_id = winners[i+1] || null;
+                    newMatches.push({ round: nextRoundNum, player1: {id: p1_id}, player2: p2_id ? {id: p2_id} : null });
+                }
+
+                if (newMatches.length > 0) {
+                    await this.match_create_bulk(db, tournament_id, newMatches);
+                    console.log(`Advanced tournament ${tournament_id} to round ${nextRoundNum}.`);
+                }
+            }
         }
     }
 };

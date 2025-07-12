@@ -1,5 +1,17 @@
 const FriendshipModel = require("../models/models.friendships");
 
+function notifyUsers(connectionMap, userIds) {
+    const notification = JSON.stringify({ type: "social_update" });
+    const uniqueUserIds = [...new Set(userIds)];
+
+    uniqueUserIds.forEach((id) => {
+        const socket = connectionMap.get(id);
+        if (socket && socket.readyState === 1) { // 1 === WebSocket.OPEN
+            socket.send(notification);
+        }
+    });
+}
+
 const FriendshipCtrl = {
     async getFriends(request, reply) {
         const user_id = request.params.id || request.user.payload.id;
@@ -15,12 +27,15 @@ const FriendshipCtrl = {
 
     async removeFriend(request, reply) {
         const user_id = request.user.payload.id;
-        const friend_id = request.params.friend_id;
+        const friend_id = parseInt(request.params.friend_id, 10);
         const res = await FriendshipModel.remove_friend(
             this.db,
             user_id,
             friend_id,
         );
+        if (res.success) {
+            notifyUsers(this.activeConnections, [user_id, friend_id]);
+        }
         reply.code(res.code).send(res);
     },
 
@@ -38,6 +53,9 @@ const FriendshipCtrl = {
             sender_id,
             receiver_id,
         );
+        if (res.success) {
+            notifyUsers(this.activeConnections, [sender_id, receiver_id]);
+        }
         reply.code(res.code).send(res);
     },
 
@@ -50,29 +68,98 @@ const FriendshipCtrl = {
     },
 
     async acceptFriendRequest(request, reply) {
+        const receiver_id = request.user.payload.id;
+        const request_id = parseInt(request.params.id, 10);
+        const requestDetails = await FriendshipModel.get_request_details(
+            this.db,
+            request_id,
+        );
+
+        if (
+            !requestDetails.success ||
+            requestDetails.result.receiver_id !== receiver_id
+        ) {
+            return reply.code(404).send({
+                success: false,
+                result: "Request not found or permission denied.",
+            });
+        }
+
         const res = await FriendshipModel.accept_friend_request(
             this.db,
-            request.params.id,
-            request.user.payload.id,
+            request_id,
+            receiver_id,
         );
+        if (res.success) {
+            notifyUsers(this.activeConnections, [
+                requestDetails.result.sender_id,
+                receiver_id,
+            ]);
+        }
         reply.code(res.code).send(res);
     },
 
     async declineFriendRequest(request, reply) {
+        const receiver_id = request.user.payload.id;
+        const request_id = parseInt(request.params.id, 10);
+        const requestDetails = await FriendshipModel.get_request_details(
+            this.db,
+            request_id,
+        );
+
+        if (
+            !requestDetails.success ||
+            requestDetails.result.receiver_id !== receiver_id
+        ) {
+            return reply.code(404).send({
+                success: false,
+                result: "Request not found.",
+            });
+        }
+
         const res = await FriendshipModel.decline_friend_request(
             this.db,
-            request.params.id,
-            request.user.payload.id,
+            request_id,
+            receiver_id,
         );
+        if (res.success) {
+            notifyUsers(this.activeConnections, [
+                requestDetails.result.sender_id,
+                receiver_id,
+            ]);
+        }
         reply.code(res.code).send(res);
     },
 
     async cancelFriendRequest(request, reply) {
+        const sender_id = request.user.payload.id;
+        const request_id = parseInt(request.params.id, 10);
+        const requestDetails = await FriendshipModel.get_request_details(
+            this.db,
+            request_id,
+        );
+
+        if (
+            !requestDetails.success ||
+            requestDetails.result.sender_id !== sender_id
+        ) {
+            return reply.code(404).send({
+                success: false,
+                result: "Request not found or permission denied.",
+            });
+        }
+
         const res = await FriendshipModel.cancel_friend_request(
             this.db,
-            request.params.id,
-            request.user.payload.id,
+            request_id,
+            sender_id,
         );
+        if (res.success) {
+            notifyUsers(this.activeConnections, [
+                sender_id,
+                requestDetails.result.receiver_id,
+            ]);
+        }
         reply.code(res.code).send(res);
     },
 
@@ -85,27 +172,31 @@ const FriendshipCtrl = {
     },
 
     async blockUser(request, reply) {
+        const blocker_id = request.user.payload.id;
         const { blocked_id } = request.body;
-        await FriendshipModel.remove_friend(
-            this.db,
-            request.user.payload.id,
-            blocked_id,
-        );
+        await FriendshipModel.remove_friend(this.db, blocker_id, blocked_id);
         const res = await FriendshipModel.block_user(
             this.db,
-            request.user.payload.id,
+            blocker_id,
             blocked_id,
         );
+        if (res.success) {
+            notifyUsers(this.activeConnections, [blocker_id, blocked_id]);
+        }
         reply.code(res.code).send(res);
     },
 
     async unblockUser(request, reply) {
-        const { blocked_id } = request.params;
+        const blocker_id = request.user.payload.id;
+        const blocked_id = parseInt(request.params.blocked_id, 10);
         const res = await FriendshipModel.unblock_user(
             this.db,
-            request.user.payload.id,
+            blocker_id,
             blocked_id,
         );
+        if (res.success) {
+            notifyUsers(this.activeConnections, [blocker_id, blocked_id]);
+        }
         reply.code(res.code).send(res);
     },
 
@@ -118,4 +209,5 @@ const FriendshipCtrl = {
         reply.send({ success: true, result: { isBlocked: !!res } });
     },
 };
+
 module.exports = FriendshipCtrl;
