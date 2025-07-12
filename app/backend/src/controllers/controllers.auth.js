@@ -169,16 +169,11 @@ const AuthCtl = {
     },
 
     async TwofaGet(request, reply) {
-        const authHeader = request.headers.authorization;
-        const token = authHeader.split(" ")[1];
-        const decoded = await request.jwtVerify(token);
-        const payload = decoded.payload;
-
+        const payload = request.user.payload
         const res = await TwofaModel.two_fa_get_by_id(this.db, payload.id);
         if (res.success === false) {
             return reply.status(res.code).send(res);
         }
-
         const qr_code = await qrcode.toDataURL(res.result.otpauth_url);
         reply.status(200).send(qr_code); // wrap this into an img take source in html
     },
