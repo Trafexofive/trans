@@ -39,6 +39,13 @@ const ChatCtl = {
                     );
                     if (blockCheck.result) return;
 
+                     // sanitize and validate message against xss
+                     const { sanitized, isValid } = check_and_sanitize({ message: message.content });
+                     if (!isValid) {
+                         socket.send(JSON.stringify({ error: "Invalid message." }));
+                         return;
+                     }
+
                     const recipientSocket = this.activeConnections.get(
                         message.to,
                     );
@@ -48,7 +55,7 @@ const ChatCtl = {
                     const savedMessage = await ChatModel.chat_create(this.db, {
                         sender_id: userId,
                         recipient_id: message.to,
-                        message: message.content,
+                        message: sanitized.message,
                         is_delivered: isDelivered ? 1 : 0,
                         delivered_at: isDelivered
                             ? new Date().toISOString()
